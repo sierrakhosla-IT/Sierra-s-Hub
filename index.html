@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Execution OS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Ambient ribbon canvas -->
+  <div class="ambient-bg-canvas" aria-hidden="true"></div>
+
+  <div class="app-shell">
+
+    <!-- ── TOP NAVIGATION ── -->
+    <header class="top-nav">
+      <div class="nav-brand">
+        <span class="brand-glyph" aria-hidden="true"></span>
+        <span class="brand-name">Execution OS</span>
+      </div>
+
+      <nav class="workspace-tabs" role="tablist" aria-label="Workspaces">
+        <button class="ws-tab is-active" data-ws="execution" role="tab" aria-selected="true">Execution</button>
+        <button class="ws-tab is-disabled" data-ws="device-ops" role="tab" aria-selected="false" title="Coming soon">Device Ops</button>
+        <button class="ws-tab is-disabled" data-ws="projects" role="tab" aria-selected="false" title="Coming soon">Projects</button>
+        <button class="ws-tab is-disabled" data-ws="knowledge" role="tab" aria-selected="false" title="Coming soon">Knowledge</button>
+      </nav>
+
+      <div class="nav-right">
+        <span class="nav-clock" id="nav-clock"></span>
+        <span class="nav-date" id="nav-date"></span>
+        <span class="save-dot" id="save-dot" aria-label="Save status"></span>
+      </div>
+    </header>
+
+    <!-- ── BODY ── -->
+    <div class="body-layout">
+
+      <!-- LEFT CONTEXT RAIL -->
+      <aside class="context-rail" id="context-rail">
+
+        <div class="rail-mission-echo">
+          <div class="echo-eyebrow">Mission</div>
+          <p class="echo-text" id="echo-mission">No mission set</p>
+        </div>
+
+        <nav class="rail-nav" aria-label="Workspace sections">
+          <div class="rail-nav-group-label">Workspace</div>
+
+          <a class="rail-nav-item" href="#section-now" data-nav="now">
+            <span class="rnav-dot rnav-dot-now"></span>
+            <span class="rnav-label">Now</span>
+            <span class="rnav-count" id="rnav-now">0</span>
+          </a>
+          <a class="rail-nav-item" href="#section-next" data-nav="next">
+            <span class="rnav-dot rnav-dot-next"></span>
+            <span class="rnav-label">Next</span>
+            <span class="rnav-count" id="rnav-next">0</span>
+          </a>
+          <a class="rail-nav-item" href="#section-waiting" data-nav="waiting">
+            <span class="rnav-dot rnav-dot-waiting"></span>
+            <span class="rnav-label">Waiting</span>
+            <span class="rnav-count" id="rnav-waiting">0</span>
+          </a>
+          <a class="rail-nav-item" href="#section-done" data-nav="done">
+            <span class="rnav-dot rnav-dot-done"></span>
+            <span class="rnav-label">Done</span>
+            <span class="rnav-count" id="rnav-done">0</span>
+          </a>
+        </nav>
+
+        <div class="rail-spacer"></div>
+
+        <div class="rail-actions">
+          <button type="button" class="rail-btn rail-btn-primary" id="btn-new-day">New Day</button>
+          <button type="button" class="rail-btn rail-btn-ghost" id="btn-eod">End of Day</button>
+          <button type="button" class="rail-btn rail-btn-ghost" id="btn-clear-workspace">Clear Workspace</button>
+        </div>
+
+      </aside>
+
+      <!-- CENTER WORKSPACE -->
+      <main class="workspace" id="workspace" tabindex="-1">
+
+        <!-- MISSION HERO -->
+        <section class="mission-hero" id="section-mission">
+          <div class="mission-eyebrow">Current Mission</div>
+          <div class="mission-display-wrap" id="mission-display-wrap">
+            <h1 class="mission-display" id="mission-display" title="Click to edit"></h1>
+          </div>
+          <textarea
+            class="mission-input"
+            id="mission-input"
+            rows="2"
+            maxlength="200"
+            placeholder="What is the one thing that must move today?"
+            spellcheck="false"
+            aria-label="Mission statement"
+          ></textarea>
+          <div class="mission-footer" id="mission-footer">
+            <div class="mission-progress-wrap" id="mission-progress-wrap" hidden>
+              <div class="mission-progress-bar">
+                <div class="mission-progress-fill" id="mission-progress-fill"></div>
+              </div>
+              <span class="mission-progress-label" id="mission-progress-label">0% complete</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- CAPTURE ZONE -->
+        <div class="capture-zone" id="capture-zone">
+          <div class="capture-row">
+            <span class="capture-plus" aria-hidden="true">+</span>
+            <input
+              type="text"
+              class="capture-input"
+              id="capture-input"
+              placeholder="Capture a task, thought, or action…"
+              maxlength="200"
+              spellcheck="false"
+              autocomplete="off"
+              aria-label="Quick capture"
+            >
+            <div class="capture-lane-picker" id="capture-lane-picker" aria-hidden="true">
+              <button type="button" class="clp-btn clp-now"  data-to-lane="now"     tabindex="-1">Now</button>
+              <button type="button" class="clp-btn clp-next clp-active" data-to-lane="next" tabindex="-1">Next</button>
+              <button type="button" class="clp-btn clp-waiting" data-to-lane="waiting" tabindex="-1">Waiting</button>
+            </div>
+            <button type="button" class="btn-capture-cta" onclick="handleCapture()" aria-label="Capture task">
+              <span>Capture</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- TASK WORKSPACE -->
+        <div class="task-workspace" id="task-workspace">
+
+          <!-- NOW + NEXT row -->
+          <div class="task-row-double">
+
+            <section class="task-section" id="section-now" data-lane="now">
+              <header class="section-head">
+                <span class="section-dot section-dot-now" aria-hidden="true"></span>
+                <h2 class="section-title">Now</h2>
+                <span class="section-sub">Active focus</span>
+              </header>
+              <div class="task-list" id="now-list" role="list" aria-label="Now tasks"></div>
+              <div class="lane-empty" id="now-empty">Pull something from Next to start</div>
+            </section>
+
+            <section class="task-section" id="section-next" data-lane="next">
+              <header class="section-head">
+                <span class="section-dot section-dot-next" aria-hidden="true"></span>
+                <h2 class="section-title">Next</h2>
+                <span class="section-sub">Queued up</span>
+              </header>
+              <div class="task-list" id="next-list" role="list" aria-label="Next tasks"></div>
+              <div class="lane-empty" id="next-empty">Queue is clear</div>
+            </section>
+
+          </div>
+
+          <!-- WAITING -->
+          <section class="task-section" id="section-waiting" data-lane="waiting">
+            <header class="section-head">
+              <span class="section-dot section-dot-waiting" aria-hidden="true"></span>
+              <h2 class="section-title">Waiting</h2>
+              <span class="section-sub">Blocked on external response</span>
+            </header>
+            <div class="task-list" id="waiting-list" role="list" aria-label="Waiting tasks"></div>
+            <div class="lane-empty" id="waiting-empty">Nothing blocked</div>
+          </section>
+
+          <!-- DONE -->
+          <section class="task-section task-section-done" id="section-done" data-lane="done">
+            <header class="section-head">
+              <span class="section-dot section-dot-done" aria-hidden="true"></span>
+              <h2 class="section-title">Done</h2>
+              <span class="section-sub" id="done-sub">Today</span>
+              <button type="button" class="section-clear-btn" id="btn-clear-done">Clear</button>
+            </header>
+            <div class="task-list" id="done-list" role="list" aria-label="Completed tasks"></div>
+            <div class="lane-empty" id="done-empty">No completed tasks yet</div>
+          </section>
+
+        </div>
+      </main>
+
+      <!-- RIGHT INSPECTOR -->
+      <aside class="inspector" id="inspector">
+
+        <button type="button" class="inspector-toggle-btn" id="btn-inspector-toggle" aria-label="Collapse inspector panel" title="Toggle inspector">
+          <span class="inspector-toggle-icon" aria-hidden="true">‹</span>
+        </button>
+
+        <div class="inspector-inner">
+
+        <div class="inspector-idle" id="inspector-idle">
+          <div class="inspector-idle-content">
+            <p class="inspector-idle-title">Task Details</p>
+            <ul class="inspector-idle-hints">
+              <li>edit notes</li>
+              <li>move work</li>
+              <li>mark complete</li>
+              <li>delete it</li>
+            </ul>
+            <p class="inspector-idle-sub">Select a task to begin</p>
+          </div>
+        </div>
+
+        <div class="inspector-detail" id="inspector-detail" hidden>
+          <header class="inspector-head">
+            <span class="inspector-lane-badge" id="inspector-badge"></span>
+            <div class="inspector-head-actions">
+              <button type="button" class="inspector-icon-btn" id="btn-inspector-close" title="Close inspector" aria-label="Close inspector">✕</button>
+            </div>
+          </header>
+
+          <div class="inspector-body">
+
+            <div class="inspector-title-wrap">
+              <textarea
+                class="inspector-title"
+                id="inspector-title"
+                rows="2"
+                maxlength="200"
+                placeholder="Task title"
+                spellcheck="false"
+              ></textarea>
+            </div>
+
+            <div class="inspector-field-group" id="insp-waiting-group" hidden>
+              <label class="inspector-label" for="inspector-waiting">Waiting on</label>
+              <input type="text" class="inspector-field" id="inspector-waiting"
+                placeholder="Who or what are you waiting for?">
+            </div>
+
+            <div class="inspector-field-group">
+              <label class="inspector-label" for="inspector-notes">Notes</label>
+              <textarea class="inspector-notes" id="inspector-notes" rows="5"
+                placeholder="Context, links, details…" spellcheck="false"></textarea>
+            </div>
+
+            <div class="inspector-meta" id="inspector-meta"></div>
+
+          </div>
+
+          <footer class="inspector-footer">
+            <button type="button" class="insp-btn insp-btn-complete" id="btn-insp-complete">
+              Mark Complete
+            </button>
+            <div class="insp-footer-right">
+              <button type="button" class="insp-btn insp-btn-ghost" id="btn-insp-move" title="Move to another lane">Move…</button>
+              <button type="button" class="insp-btn insp-btn-delete" id="btn-insp-delete" title="Delete task">Delete</button>
+            </div>
+          </footer>
+        </div>
+
+        </div><!-- /inspector-inner -->
+
+      </aside>
+
+    </div><!-- /body-layout -->
+
+    <!-- COMMAND DOCK -->
+    <footer class="command-dock" id="command-dock">
+      <div class="dock-inner">
+        <div class="dock-left">
+          <button type="button" class="dock-action" id="dock-capture-btn" title="Quick capture (Ctrl+K)">
+            <span class="dock-action-icon">⊕</span>
+            <span class="dock-action-label">Capture</span>
+            <kbd class="dock-kbd">Ctrl K</kbd>
+          </button>
+        </div>
+
+        <div class="dock-center">
+          <span class="dock-mission" id="dock-mission">No mission set</span>
+        </div>
+
+        <div class="dock-right">
+          <span class="dock-status" id="dock-status">Ready</span>
+        </div>
+      </div>
+    </footer>
+
+  </div><!-- /app-shell -->
+
+  <!-- ── MOVE TASK POPOVER ── -->
+  <div class="move-popover" id="move-popover" hidden role="dialog" aria-label="Move task">
+    <div class="move-popover-label">Move to</div>
+    <button type="button" class="move-opt" data-move="now">
+      <span class="move-opt-dot move-opt-dot-now"></span>Now
+    </button>
+    <button type="button" class="move-opt" data-move="next">
+      <span class="move-opt-dot move-opt-dot-next"></span>Next
+    </button>
+    <button type="button" class="move-opt" data-move="waiting">
+      <span class="move-opt-dot move-opt-dot-waiting"></span>Waiting
+    </button>
+  </div>
+
+  <!-- ── END OF DAY PANEL ── -->
+  <div class="overlay" id="eod-overlay" hidden></div>
+  <aside class="slide-panel" id="eod-panel">
+    <header class="slide-panel-head">
+      <h2 class="slide-panel-title">End of Day</h2>
+      <button type="button" class="panel-close-btn" id="btn-eod-close" aria-label="Close">✕</button>
+    </header>
+    <div class="slide-panel-body">
+
+      <div class="sp-field">
+        <label class="sp-label" for="eod-closed">Closed today</label>
+        <textarea class="sp-textarea" id="eod-closed" rows="4"
+          placeholder="What got done? Wins, shipped work, closed tickets…" spellcheck="false"></textarea>
+      </div>
+
+      <div class="sp-field">
+        <label class="sp-label" for="eod-tomorrow-mission">Tomorrow's mission</label>
+        <input type="text" class="sp-input" id="eod-tomorrow-mission"
+          placeholder="The one thing that must move tomorrow…" maxlength="200">
+      </div>
+
+      <div class="sp-field">
+        <label class="sp-label" for="eod-notes">Notes &amp; context</label>
+        <textarea class="sp-textarea" id="eod-notes" rows="3"
+          placeholder="Context to carry forward, open questions…" spellcheck="false"></textarea>
+      </div>
+
+    </div>
+    <footer class="slide-panel-footer">
+      <button type="button" class="sp-btn sp-btn-primary" id="btn-eod-apply">Apply &amp; Start Tomorrow</button>
+      <button type="button" class="sp-btn sp-btn-ghost" id="btn-eod-save">Save &amp; Close</button>
+    </footer>
+  </aside>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- ── CLEAR WORKSPACE MODAL ── -->
+  <div class="modal-overlay" id="clear-ws-overlay" hidden></div>
+  <div class="modal-dialog" id="clear-ws-modal" role="dialog" aria-label="Clear Workspace" hidden>
+    <div class="modal-head">
+      <h3 class="modal-title">Clear Workspace</h3>
+      <button type="button" class="modal-close-btn" id="btn-clear-ws-close" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-question">Clear which items?</p>
+      <div class="modal-checks">
+        <label class="modal-check-label">
+          <input type="checkbox" class="modal-check" id="clear-lane-now" value="now"> Now
+        </label>
+        <label class="modal-check-label">
+          <input type="checkbox" class="modal-check" id="clear-lane-next" value="next"> Next
+        </label>
+        <label class="modal-check-label">
+          <input type="checkbox" class="modal-check" id="clear-lane-waiting" value="waiting"> Waiting
+        </label>
+        <label class="modal-check-label">
+          <input type="checkbox" class="modal-check" id="clear-lane-done" value="done"> Done
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="modal-btn modal-btn-ghost" id="btn-clear-ws-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-danger" id="btn-clear-ws-confirm">Clear Selected</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
