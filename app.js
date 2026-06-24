@@ -24,18 +24,21 @@ var state = {
       { id: '3', text: 'Unity Review', focused: false }
     ],
     waiting: [
-      { id: '4', text: 'Jesus Flores', context: 'FedEx confirmation' },
-      { id: '5', text: 'Ben Ludwig', context: 'Manager approval' }
+      { id: '4', text: 'Jesus Flores', context: 'FedEx confirmation', waitingSince: Date.now() - 2 * 24 * 60 * 60 * 1000 },
+      { id: '5', text: 'Ben Ludwig', context: 'Manager approval', waitingSince: Date.now() - 5 * 60 * 60 * 1000 }
     ],
     done: [
       { id: '6', text: 'Ship Rheannon Phone', timestamp: formatTimestamp(new Date()) }
     ]
   },
   activity: [
-    { time: formatTimestamp(new Date()), message: 'System initialized. Ready for execution.' }
+    { time: formatTimestamp(new Date()), message: 'System initialized. Ready for execution.', type: 'system' }
   ],
   snapshots: {},
-  selectedSnapshotDate: null
+  selectedSnapshotDate: null,
+  totalFocusMs: 0,
+  focusSessionStart: null,
+  dailyStats: { date: null, started: 0, completed: 0 }
 };
 
 var draggedTaskId = null;
@@ -43,6 +46,26 @@ var draggedSourceLane = null;
 
 function formatTimestamp(date) {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatWaitingAge(ts) {
+  if (!ts) return '';
+  var diff = Date.now() - ts;
+  var mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins === 1 ? '1 min' : mins + ' mins';
+  var hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs === 1 ? '1 hour' : hrs + ' hours';
+  var days = Math.floor(hrs / 24);
+  return days === 1 ? '1 day' : days + ' days';
+}
+
+function backfillWaitingSince() {
+  state.tasks.waiting.forEach(function (task) {
+    if (!task.waitingSince) {
+      task.waitingSince = Date.now();
+    }
+  });
 }
 
 function todayKey() {
@@ -74,18 +97,21 @@ function getDefaultState() {
         { id: '3', text: 'Unity Review', focused: false }
       ],
       waiting: [
-        { id: '4', text: 'Jesus Flores', context: 'FedEx confirmation' },
-        { id: '5', text: 'Ben Ludwig', context: 'Manager approval' }
+        { id: '4', text: 'Jesus Flores', context: 'FedEx confirmation', waitingSince: Date.now() - 2 * 24 * 60 * 60 * 1000 },
+        { id: '5', text: 'Ben Ludwig', context: 'Manager approval', waitingSince: Date.now() - 5 * 60 * 60 * 1000 }
       ],
       done: [
         { id: '6', text: 'Ship Rheannon Phone', timestamp: formatTimestamp(new Date()) }
       ]
     },
     activity: [
-      { time: formatTimestamp(new Date()), message: 'System initialized. Ready for execution.' }
+      { time: formatTimestamp(new Date()), message: 'System initialized. Ready for execution.', type: 'system' }
     ],
     snapshots: {},
-    selectedSnapshotDate: null
+    selectedSnapshotDate: null,
+    totalFocusMs: 0,
+    focusSessionStart: null,
+    dailyStats: { date: null, started: 0, completed: 0 }
   }));
 }
 
@@ -97,7 +123,10 @@ function loadFromLocalStorage() {
     state = Object.assign(getDefaultState(), parsed, {
       tasks: Object.assign(getDefaultState().tasks, parsed.tasks || {}),
       snapshots: parsed.snapshots || {},
-      activity: parsed.activity || getDefaultState().activity
+      activity: parsed.activity || getDefaultState().activity,
+      totalFocusMs: parsed.totalFocusMs || 0,
+      focusSessionStart: null,
+      dailyStats: parsed.dailyStats || { date: null, started: 0, completed: 0 }
     });
     if (!state.tasks.queue) {
       state.tasks.queue = [];
@@ -107,6 +136,7 @@ function loadFromLocalStorage() {
         state.tasks[lane] = [];
       }
     });
+    backfillWaitingSince();
   } catch (err) {
     console.warn('Execution OS: could not load saved state', err);
   }
@@ -120,32 +150,88 @@ function saveToLocalStorage() {
   }
 }
 
-function countBlocked() {
-  return state.tasks.waiting.filter(function (t) {
-    if (!t.context) return false;
-    var c = t.context.toLowerCase();
-    return c.indexOf('block') !== -1 || c.indexOf('approval') !== -1;
-  }).length;
+function ensureDailyStats() {
+  var today = todayKey();
+  if (!state.dailyStats || state.dailyStats.date !== today) {
+    state.dailyStats = { date: today, started: 0, completed: 0 };
+  }
+}
+
+function incrementDailyStarted() {
+  ensureDailyStats();
+  state.dailyStats.started += 1;
+}
+
+function incrementDailyCompleted() {
+  ensureDailyStats();
+  state.dailyStats.completed += 1;
+}
+
+function getCarriedForwardCount() {
+  return state.tasks.queue.length + state.tasks.now.length + state.tasks.waiting.length;
+}
+
+function buildExecutionScore() {
+  ensureDailyStats();
+  return {
+    completed: state.tasks.done.length,
+    waiting: state.tasks.waiting.length,
+    focusTimeMinutes: getFocusTimeMinutes(),
+    started: state.dailyStats.started,
+    completedToday: state.dailyStats.completed,
+    carriedForward: getCarriedForwardCount()
+  };
+}
+
+function formatExecutionScoreLine(score) {
+  if (!score) return '';
+  return score.completed + ' Completed · ' +
+    score.waiting + ' Waiting · ' +
+    (score.focusTimeMinutes || 0) + 'm Focus';
+}
+
+function formatEodScoreLine(score) {
+  if (!score) return '';
+  return (score.started || 0) + ' Started · ' +
+    (score.completedToday || score.completed || 0) + ' Completed · ' +
+    (score.carriedForward || 0) + ' Carried Forward';
+}
+
+function endFocusSession() {
+  if (state.focusSessionStart) {
+    state.totalFocusMs = (state.totalFocusMs || 0) + (Date.now() - state.focusSessionStart);
+    state.focusSessionStart = null;
+  }
+}
+
+function getFocusTimeMinutes() {
+  var total = state.totalFocusMs || 0;
+  if (state.focusSessionStart) {
+    total += Date.now() - state.focusSessionStart;
+  }
+  return Math.floor(total / 60000);
+}
+
+function formatFocusTimeDisplay() {
+  var minutes = getFocusTimeMinutes();
+  return minutes + 'm';
 }
 
 function updateMetrics() {
+  ensureDailyStats();
+
   var queue = state.tasks.queue.length;
   var active = state.tasks.now.length;
   var waiting = state.tasks.waiting.length;
   var done = state.tasks.done.length;
-  var blocked = countBlocked();
+  var carried = getCarriedForwardCount();
 
-  document.getElementById('count-active').textContent = active;
-  document.getElementById('count-waiting').textContent = waiting;
-  document.getElementById('count-done').textContent = done;
-  document.getElementById('count-blocked').textContent = blocked;
-
-  var completedSub = document.getElementById('completed-sub');
-  if (completedSub) {
-    completedSub.textContent = done === 1
-      ? '1 task in your Done lane'
-      : done + ' tasks in your Done lane';
-  }
+  var scoreCompleted = document.getElementById('score-completed');
+  var scoreWaiting = document.getElementById('score-waiting');
+  var scoreFocusTime = document.getElementById('score-focus-time');
+  if (scoreCompleted) scoreCompleted.textContent = done;
+  if (scoreWaiting) scoreWaiting.textContent = waiting;
+  if (scoreFocusTime) scoreFocusTime.textContent = formatFocusTimeDisplay();
 
   document.getElementById('badge-queue').textContent = queue;
   document.getElementById('badge-now').textContent = active;
@@ -154,6 +240,29 @@ function updateMetrics() {
 
   document.getElementById('mission-sub-counts').textContent =
     queue + ' Queue · ' + active + ' Active · ' + waiting + ' Waiting · ' + done + ' Done';
+
+  var eodStarted = document.getElementById('eod-started');
+  var eodCompleted = document.getElementById('eod-completed');
+  var eodCarried = document.getElementById('eod-carried');
+  if (eodStarted) eodStarted.textContent = state.dailyStats.started;
+  if (eodCompleted) eodCompleted.textContent = state.dailyStats.completed;
+  if (eodCarried) eodCarried.textContent = carried;
+
+  var started = state.dailyStats.started;
+  var completedToday = state.dailyStats.completed;
+  var pct = started > 0
+    ? Math.min(100, Math.round((completedToday / started) * 100))
+    : 0;
+  var progressWrap = document.getElementById('daily-progress-wrap');
+  var progressFill = document.getElementById('daily-progress-fill');
+  var progressLabel = document.getElementById('daily-progress-label');
+  if (progressWrap) {
+    progressWrap.hidden = started === 0;
+    if (started > 0) {
+      if (progressFill) progressFill.style.width = pct + '%';
+      if (progressLabel) progressLabel.textContent = pct + '%';
+    }
+  }
 
   updateCurrentWorkCapacity();
 }
@@ -171,15 +280,86 @@ function updateCurrentWorkCapacity() {
   lane.classList.toggle('is-over-capacity', over);
 }
 
-function logActivity(message) {
-  state.activity.unshift({
-    time: formatTimestamp(new Date()),
-    message: message
-  });
+function logActivity(message, taskName, type, taskId) {
+  if (type === undefined) {
+    type = taskName ? 'work' : 'system';
+  }
+
+  var lastEntry = state.activity[0];
+
+  if (taskName && type === 'work' && lastEntry && lastEntry.taskName === taskName && lastEntry.type === 'work') {
+    lastEntry.message += ' → ' + message;
+    lastEntry.time = formatTimestamp(new Date());
+    if (taskId) {
+      lastEntry.taskId = taskId;
+    }
+  } else {
+    state.activity.unshift({
+      time: formatTimestamp(new Date()),
+      message: message,
+      taskName: taskName || null,
+      type: type,
+      taskId: taskId || null
+    });
+  }
+
   if (state.activity.length > 80) {
     state.activity = state.activity.slice(0, 80);
   }
   renderActivity();
+}
+
+function scrollToTask(taskId) {
+  var taskEl = document.querySelector('[data-id="' + taskId + '"]');
+  if (!taskEl) return;
+
+  taskEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  taskEl.classList.add('highlight');
+  window.setTimeout(function () {
+    taskEl.classList.remove('highlight');
+  }, 1600);
+}
+
+function logStepIcon(step) {
+  var trimmed = step.trim();
+  if (trimmed.indexOf('Added') === 0) return '+';
+  if (trimmed.indexOf('Started') === 0) return '▶';
+  if (trimmed === 'Completed') return '✓';
+  if (trimmed === 'Waiting') return '⏸';
+  if (trimmed === 'Removed') return '✕';
+  if (trimmed === 'Focus set' || trimmed === 'Focus') return '★';
+  return null;
+}
+
+function appendLogSteps(container, message) {
+  var steps = message.split(' → ');
+  steps.forEach(function (step, index) {
+    if (index > 0) {
+      var sep = document.createElement('span');
+      sep.className = 'log-separator';
+      sep.textContent = '→';
+      sep.setAttribute('aria-hidden', 'true');
+      container.appendChild(sep);
+    }
+
+    var stepEl = document.createElement('span');
+    stepEl.className = 'log-step';
+    var icon = logStepIcon(step);
+
+    if (icon) {
+      var iconEl = document.createElement('span');
+      iconEl.className = 'log-icon';
+      iconEl.setAttribute('aria-hidden', 'true');
+      iconEl.textContent = icon;
+      stepEl.appendChild(iconEl);
+      stepEl.setAttribute('title', step.trim());
+      stepEl.setAttribute('aria-label', step.trim());
+    } else {
+      stepEl.textContent = step.trim();
+    }
+
+    container.appendChild(stepEl);
+  });
 }
 
 function renderActivity() {
@@ -187,17 +367,49 @@ function renderActivity() {
   stream.innerHTML = '';
 
   state.activity.forEach(function (entry) {
+    var entryType = entry.type || (entry.taskName ? 'work' : 'system');
     var item = document.createElement('div');
-    item.className = 'timeline-item entry';
+    item.className = 'timeline-item entry type-' + entryType;
+
+    if (entry.taskId) {
+      item.classList.add('is-clickable');
+      item.setAttribute('role', 'button');
+      item.tabIndex = 0;
+    }
 
     var time = document.createElement('time');
     time.textContent = entry.time;
 
     var msg = document.createElement('span');
-    msg.textContent = entry.message;
+    msg.className = 'timeline-message';
+    if (entry.taskName && entryType === 'work') {
+      var label = document.createElement('strong');
+      label.className = 'timeline-task';
+      label.textContent = entry.taskName;
+      msg.appendChild(label);
+      msg.appendChild(document.createTextNode(' — '));
+      appendLogSteps(msg, entry.message);
+    } else {
+      msg.textContent = entry.message;
+    }
 
     item.appendChild(time);
     item.appendChild(msg);
+
+    if (entry.taskId) {
+      (function (id) {
+        item.addEventListener('click', function () {
+          scrollToTask(id);
+        });
+        item.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            scrollToTask(id);
+          }
+        });
+      })(entry.taskId);
+    }
+
     stream.appendChild(item);
   });
 }
@@ -288,9 +500,25 @@ function buildTaskCard(task, laneKey) {
       updateTaskContext(laneKey, task.id, ctx.innerText.trim());
     });
     card.appendChild(ctx);
+
+    if (task.waitingSince) {
+      var age = document.createElement('span');
+      age.className = 'task-age';
+      age.textContent = formatWaitingAge(task.waitingSince);
+      card.appendChild(age);
+    }
   }
 
   if (laneKey === 'done') {
+    if (task.elapsedMinutes != null) {
+      var elapsed = document.createElement('div');
+      elapsed.className = 'task-elapsed';
+      elapsed.textContent = task.elapsedMinutes < 1
+        ? 'Completed in < 1 min'
+        : 'Completed in ' + task.elapsedMinutes + ' min';
+      card.appendChild(elapsed);
+    }
+
     var ts = document.createElement('div');
     ts.className = 'task-timestamp';
     ts.textContent = task.timestamp || formatTimestamp(new Date());
@@ -324,7 +552,16 @@ function renderLane(laneKey, elementId) {
   var container = document.getElementById(elementId);
   container.innerHTML = '';
 
-  state.tasks[laneKey].forEach(function (task) {
+  var tasks = state.tasks[laneKey].slice();
+  if (laneKey === 'now') {
+    tasks.sort(function (a, b) {
+      if (a.focused && !b.focused) return -1;
+      if (!a.focused && b.focused) return 1;
+      return 0;
+    });
+  }
+
+  tasks.forEach(function (task) {
     container.appendChild(buildTaskCard(task, laneKey));
   });
 }
@@ -411,6 +648,20 @@ function renderSnapshotPreview() {
   }
 
   var snap = state.snapshots[state.selectedSnapshotDate];
+  var score = snap.executionScore;
+
+  if (score) {
+    var metrics = document.createElement('div');
+    metrics.className = 'snapshot-preview-metrics';
+    metrics.textContent = 'Execution Score: ' + formatExecutionScoreLine(score);
+    box.appendChild(metrics);
+
+    var eodLine = document.createElement('div');
+    eodLine.className = 'snapshot-preview-metrics';
+    eodLine.textContent = 'EOD: ' + formatEodScoreLine(score);
+    box.appendChild(eodLine);
+  }
+
   var lines = [
     'Mission: ' + snap.mission,
     'Queue: ' + (snap.tasks.queue ? snap.tasks.queue.length : 0) +
@@ -437,15 +688,17 @@ function renderSnapshotPreview() {
 function saveSnapshot() {
   var key = todayKey();
   var existing = state.snapshots[key];
+  endFocusSession();
   state.snapshots[key] = {
     mission: state.mission,
     targets: state.targets,
     tasks: JSON.parse(JSON.stringify(state.tasks)),
     savedAt: new Date().toISOString(),
-    archivedDone: existing && existing.archivedDone ? existing.archivedDone : []
+    archivedDone: existing && existing.archivedDone ? existing.archivedDone : [],
+    executionScore: buildExecutionScore()
   };
   state.selectedSnapshotDate = key;
-  logActivity('Saved daily snapshot for ' + key);
+  logActivity('Saved daily snapshot for ' + key, null, 'system');
   renderSnapshots();
   saveToLocalStorage();
 }
@@ -456,7 +709,7 @@ function clearAllBoard() {
   }, 0);
 
   if (total === 0) {
-    logActivity('Clear All — board already empty');
+    logActivity('Clear All — board already empty', null, 'system');
     return;
   }
 
@@ -471,7 +724,7 @@ function clearAllBoard() {
     state.tasks[lane] = [];
   });
 
-  logActivity('Clear All — removed ' + total + ' task(s)');
+  logActivity('Clear All — removed ' + total + ' task(s)', null, 'system');
   renderBoard();
 }
 
@@ -479,7 +732,7 @@ function startNewDay() {
   var doneTasks = state.tasks.done;
 
   if (doneTasks.length === 0) {
-    logActivity('New Day — Done lane already clear');
+    logActivity('New Day — Done lane already clear', null, 'system');
     return;
   }
 
@@ -498,13 +751,17 @@ function startNewDay() {
     tasks: JSON.parse(JSON.stringify(doneTasks))
   };
 
+  endFocusSession();
+  var executionScore = buildExecutionScore();
+
   if (!existing) {
     state.snapshots[key] = {
       mission: state.mission,
       targets: state.targets,
       tasks: JSON.parse(JSON.stringify(state.tasks)),
       savedAt: new Date().toISOString(),
-      archivedDone: [archiveBatch]
+      archivedDone: [archiveBatch],
+      executionScore: executionScore
     };
   } else {
     if (!existing.archivedDone) {
@@ -513,11 +770,12 @@ function startNewDay() {
     existing.archivedDone.push(archiveBatch);
     existing.tasks = JSON.parse(JSON.stringify(state.tasks));
     existing.savedAt = new Date().toISOString();
+    existing.executionScore = executionScore;
   }
 
   state.tasks.done = [];
   state.selectedSnapshotDate = key;
-  logActivity('New Day — archived ' + doneTasks.length + ' completed task(s)');
+  logActivity('New Day — archived ' + doneTasks.length + ' completed task(s)', null, 'system');
   renderBoard();
 }
 
@@ -542,16 +800,21 @@ function loadSnapshot(dateKey) {
     state.tasks.queue = [];
   }
   state.selectedSnapshotDate = dateKey;
+  backfillWaitingSince();
 
   syncMissionFieldsToDOM();
-  logActivity('Loaded snapshot from ' + dateKey);
+  logActivity('Loaded snapshot from ' + dateKey, null, 'system');
   renderBoard();
 }
 
 function addTask(lane, text) {
   var task = { id: uid(), text: text, focused: false };
+  if (lane === 'now') {
+    task.startTime = Date.now();
+    incrementDailyStarted();
+  }
   state.tasks[lane].push(task);
-  logActivity('Added to ' + LANE_LABELS[lane] + ': "' + text + '"');
+  logActivity('Added to ' + LANE_LABELS[lane], text, 'work', task.id);
   renderBoard();
 }
 
@@ -560,39 +823,50 @@ function addWaitingTask(raw) {
   var name = parts[0] ? parts[0].trim() : 'Context';
   var reason = parts[1] ? parts[1].trim() : 'Awaiting updates';
 
-  state.tasks.waiting.push({
+  var task = {
     id: uid(),
     text: name,
-    context: reason
-  });
+    context: reason,
+    waitingSince: Date.now()
+  };
+  state.tasks.waiting.push(task);
 
-  logActivity('Added Waiting: ' + name + ' (' + reason + ')');
+  logActivity('Added to Waiting', name, 'work', task.id);
   renderBoard();
 }
 
 function deleteTask(lane, id) {
   var task = state.tasks[lane].find(function (t) { return t.id === id; });
+  if (task && task.focused) {
+    endFocusSession();
+  }
   state.tasks[lane] = state.tasks[lane].filter(function (t) { return t.id !== id; });
-  if (task) logActivity('Removed from ' + lane + ': ' + task.text);
+  if (task) logActivity('Removed', task.text, 'work', task.id);
   renderBoard();
 }
 
 function setFocusTask(id) {
+  endFocusSession();
   state.tasks.now.forEach(function (t) {
     t.focused = t.id === id ? !t.focused : false;
   });
   var focused = state.tasks.now.find(function (t) { return t.focused; });
-  logActivity(focused ? 'Focus set: ' + focused.text : 'Focus cleared');
+  if (focused) {
+    state.focusSessionStart = Date.now();
+  }
+  logActivity(focused ? 'Focus set' : 'Focus cleared', focused ? focused.text : null, focused ? 'work' : 'system', focused ? focused.id : null);
   renderBoard();
 }
 
 function togglePrimaryFocus() {
   if (state.tasks.now.length === 0) return;
+  endFocusSession();
   var current = state.tasks.now.findIndex(function (t) { return t.focused; });
   state.tasks.now.forEach(function (t) { t.focused = false; });
   var nextIndex = current >= 0 ? (current + 1) % state.tasks.now.length : 0;
   state.tasks.now[nextIndex].focused = true;
-  logActivity('Focus: ' + state.tasks.now[nextIndex].text);
+  state.focusSessionStart = Date.now();
+  logActivity('Focus', state.tasks.now[nextIndex].text, 'work', state.tasks.now[nextIndex].id);
   renderBoard();
 }
 
@@ -603,18 +877,42 @@ function moveTask(sourceLane, targetLane, taskId) {
   if (idx === -1) return;
 
   var task = state.tasks[sourceLane].splice(idx, 1)[0];
+  if (task.focused) {
+    endFocusSession();
+  }
   task.focused = false;
+
+  if (sourceLane === 'now' && targetLane !== 'done') {
+    delete task.startTime;
+  }
+
+  if (sourceLane === 'waiting' && targetLane !== 'waiting') {
+    delete task.waitingSince;
+  }
 
   if (targetLane === 'done') {
     task.timestamp = formatTimestamp(new Date());
-    logActivity('Completed: ' + task.text);
-  } else if (targetLane === 'waiting' && !task.context) {
-    task.context = 'Awaiting updates';
-    logActivity('Moved to Waiting: ' + task.text);
+    if (task.startTime) {
+      task.elapsedMinutes = Math.floor((Date.now() - task.startTime) / 60000);
+    }
+    incrementDailyCompleted();
+    logActivity('Completed', task.text, 'work', task.id);
+  } else if (targetLane === 'waiting') {
+    if (!task.context) {
+      task.context = 'Awaiting updates';
+    }
+    task.waitingSince = Date.now();
+    logActivity('Waiting', task.text, 'work', task.id);
   } else if (targetLane === 'now' && state.tasks.now.length >= CURRENT_WORK_LIMIT) {
-    logActivity('Moved to Current Work (over capacity): ' + task.text);
+    task.startTime = Date.now();
+    incrementDailyStarted();
+    logActivity('Started (over capacity)', task.text, 'work', task.id);
+  } else if (targetLane === 'now') {
+    task.startTime = Date.now();
+    incrementDailyStarted();
+    logActivity('Started', task.text, 'work', task.id);
   } else {
-    logActivity('Moved to ' + LANE_LABELS[targetLane] + ': ' + task.text);
+    logActivity('Moved to ' + LANE_LABELS[targetLane], task.text, 'work', task.id);
   }
 
   state.tasks[targetLane].push(task);
@@ -644,6 +942,16 @@ window.drop = function (e, targetLane) {
 
   moveTask(sourceLane, targetLane, id);
 };
+
+function openShortcutsModal() {
+  var modal = document.getElementById('shortcuts-modal');
+  modal.hidden = false;
+  document.getElementById('shortcuts-close').focus();
+}
+
+function closeShortcutsModal() {
+  document.getElementById('shortcuts-modal').hidden = true;
+}
 
 function setupEventListeners() {
   document.getElementById('input-queue').addEventListener('keydown', function (e) {
@@ -686,13 +994,35 @@ function setupEventListeners() {
   document.getElementById('snapshot-save-btn').addEventListener('click', saveSnapshot);
   document.getElementById('new-day-btn').addEventListener('click', startNewDay);
   document.getElementById('clear-all-btn').addEventListener('click', clearAllBoard);
+
+  document.getElementById('toggle-sidebar').addEventListener('click', function () {
+    var sidebar = document.getElementById('sidebar');
+    var shell = document.querySelector('.app-shell');
+    var collapsed = sidebar.classList.toggle('collapsed');
+    shell.classList.toggle('sidebar-collapsed', collapsed);
+  });
+
+  document.getElementById('shortcuts-btn').addEventListener('click', openShortcutsModal);
+  document.getElementById('shortcuts-close').addEventListener('click', closeShortcutsModal);
+  document.getElementById('shortcuts-backdrop').addEventListener('click', closeShortcutsModal);
 }
 
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', function (e) {
+    var modal = document.getElementById('shortcuts-modal');
+    if (!modal.hidden && e.key === 'Escape') {
+      e.preventDefault();
+      closeShortcutsModal();
+      return;
+    }
+
     if (isTypingTarget(e.target)) return;
 
     switch (e.key.toLowerCase()) {
+      case '?':
+        e.preventDefault();
+        openShortcutsModal();
+        break;
       case 'n':
         e.preventDefault();
         document.getElementById('input-queue').focus();
@@ -721,9 +1051,22 @@ function setupKeyboardShortcuts() {
 
 document.addEventListener('DOMContentLoaded', function () {
   loadFromLocalStorage();
+  backfillWaitingSince();
   syncMissionFieldsToDOM();
   setupEventListeners();
   setupKeyboardShortcuts();
   renderActivity();
   renderBoard();
+
+  var focusedTask = state.tasks.now.find(function (t) { return t.focused; });
+  if (focusedTask) {
+    state.focusSessionStart = Date.now();
+  }
+
+  window.setInterval(function () {
+    var scoreFocusTime = document.getElementById('score-focus-time');
+    if (scoreFocusTime && state.focusSessionStart) {
+      scoreFocusTime.textContent = formatFocusTimeDisplay();
+    }
+  }, 30000);
 });
