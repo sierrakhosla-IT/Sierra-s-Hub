@@ -20,13 +20,7 @@
       </div>
       <div class="nav-actions">
         <button type="button" class="utility-btn" id="clear-all-btn">Clear All</button>
-        <div class="shortcut-legend" aria-label="Keyboard shortcuts">
-          <span><kbd>N</kbd> Queue</span>
-          <span><kbd>W</kbd> Current Work</span>
-          <span><kbd>F</kbd> Focus</span>
-          <span><kbd>/</kbd> Mission</span>
-          <span><kbd>D</kbd> Done</span>
-        </div>
+        <button type="button" class="ghost-btn shortcuts-trigger" id="shortcuts-btn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts">?</button>
       </div>
     </header>
 
@@ -54,7 +48,8 @@
               <li>Update inventory</li>
             </ul>
           </div>
-          <div class="mission-sub-counts" id="mission-sub-counts">0 Active · 0 Waiting · 0 Done</div>
+          <hr class="mission-divider">
+          <div class="mission-sub-counts" id="mission-sub-counts">0 Queue · 0 Active · 0 Waiting · 0 Done</div>
         </div>
 
         <div class="card glass execution-card">
@@ -62,23 +57,26 @@
             <div class="widget-header">Daily Progress</div>
             <button type="button" class="ghost-btn" id="new-day-btn" title="Archive Done tasks and reset today's counter">New Day</button>
           </div>
-          <div class="completed-hero">
-            <span class="completed-count" id="count-done">0</span>
-            <span class="completed-label">Completed</span>
+          <div class="daily-progress-wrap" id="daily-progress-wrap" aria-label="Today's completion progress" hidden>
+            <div class="daily-progress-track">
+              <div class="daily-progress-fill" id="daily-progress-fill"></div>
+            </div>
+            <span class="daily-progress-label" id="daily-progress-label">0%</span>
           </div>
-          <p class="completed-sub" id="completed-sub">Tasks in your Done lane</p>
-          <div class="summary-grid summary-grid--compact">
-            <div class="summary-metric" data-lane="now">
-              <span class="label">Active</span>
-              <span class="count" id="count-active">0</span>
+          <div class="today-score" aria-label="Today's score">
+            <div class="score-item">
+              <span class="score-value" id="score-completed">0</span>
+              <span class="score-label">Completed</span>
             </div>
-            <div class="summary-metric" data-lane="waiting">
-              <span class="label">Waiting</span>
-              <span class="count" id="count-waiting">0</span>
+            <span class="score-divider" aria-hidden="true">|</span>
+            <div class="score-item">
+              <span class="score-value" id="score-waiting">0</span>
+              <span class="score-label">Waiting</span>
             </div>
-            <div class="summary-metric" data-lane="blocked">
-              <span class="label">Blocked</span>
-              <span class="count" id="count-blocked">0</span>
+            <span class="score-divider" aria-hidden="true">|</span>
+            <div class="score-item">
+              <span class="score-value" id="score-focus-time">0m</span>
+              <span class="score-label">Focus Time</span>
             </div>
           </div>
         </div>
@@ -111,7 +109,7 @@
             type="text"
             class="glass-input task-input-minimal"
             id="input-queue"
-            placeholder="[ + Capture to Queue — press Enter ]"
+            placeholder="Capture for later..."
             autocomplete="off"
             aria-label="Add task to Queue"
           >
@@ -160,7 +158,7 @@
             type="text"
             class="glass-input task-input-minimal"
             id="input-waiting"
-            placeholder="[ + Context: Name — Reason... ]"
+            placeholder="[ + Waiting on... (Name — Reason) ]"
             autocomplete="off"
             aria-label="Add waiting task with context"
           >
@@ -181,12 +179,48 @@
           <div class="task-list" id="list-done"></div>
         </div>
       </section>
+
+      <footer class="eod-footer glass" id="eod-footer" aria-label="End of day summary">
+        <div class="eod-metric">
+          <span class="eod-value" id="eod-started">0</span>
+          <span class="eod-label">Started</span>
+        </div>
+        <span class="eod-divider" aria-hidden="true">|</span>
+        <div class="eod-metric">
+          <span class="eod-value" id="eod-completed">0</span>
+          <span class="eod-label">Completed</span>
+        </div>
+        <span class="eod-divider" aria-hidden="true">|</span>
+        <div class="eod-metric">
+          <span class="eod-value" id="eod-carried">0</span>
+          <span class="eod-label">Carried Forward</span>
+        </div>
+      </footer>
     </main>
 
-    <aside class="activity-sidebar glass" aria-label="Activity Timeline">
-      <div class="sidebar-header">Activity Timeline</div>
+    <aside class="activity-sidebar glass" id="sidebar" aria-label="Execution Log">
+      <div class="sidebar-header">
+        <span class="title">Execution Log</span>
+        <button type="button" id="toggle-sidebar" class="ghost-btn" aria-label="Toggle execution log">↔</button>
+      </div>
       <div class="timeline-stream" id="timeline-stream"></div>
     </aside>
+  </div>
+
+  <div class="shortcuts-modal" id="shortcuts-modal" hidden>
+    <div class="shortcuts-modal-backdrop" id="shortcuts-backdrop"></div>
+    <div class="shortcuts-modal-panel glass" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+      <h2 class="shortcuts-title" id="shortcuts-title">Keyboard Shortcuts</h2>
+      <ul class="shortcuts-list">
+        <li><kbd>N</kbd> Focus Queue input</li>
+        <li><kbd>W</kbd> Focus Current Work input</li>
+        <li><kbd>F</kbd> Cycle focus task</li>
+        <li><kbd>/</kbd> Edit mission</li>
+        <li><kbd>D</kbd> Scroll to Done lane</li>
+        <li><kbd>?</kbd> Show this help</li>
+      </ul>
+      <button type="button" class="ghost-btn" id="shortcuts-close">Close</button>
+    </div>
   </div>
 
   <script src="app.js"></script>
