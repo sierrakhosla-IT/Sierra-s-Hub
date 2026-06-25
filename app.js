@@ -10,6 +10,24 @@ var LANE_LABELS = {
   done: 'Done'
 };
 
+var TICKET_STATUS_ROWS = [
+  { key: 'active', label: 'Active' },
+  { key: 'mobilityRequests', label: 'Mobility Requests' },
+  { key: 'pendingUser', label: 'Pending User' },
+  { key: 'pendingIT', label: 'Pending IT' },
+  { key: 'onHold', label: 'On Hold' }
+];
+
+function defaultTicketStatus() {
+  return {
+    active: 14,
+    mobilityRequests: 6,
+    pendingUser: 4,
+    pendingIT: 3,
+    onHold: 2
+  };
+}
+
 var state = {
   mission: 'Complete Mobility Reconciliation',
   targets: 'Finish reconciliation\nUpdate inventory',
@@ -39,7 +57,7 @@ var state = {
   totalFocusMs: 0,
   focusSessionStart: null,
   dailyStats: { date: null, started: 0, completed: 0 },
-  assetHolds: { phones: 59, laptops: 28 }
+  ticketStatus: defaultTicketStatus()
 };
 
 var draggedTaskId = null;
@@ -113,7 +131,7 @@ function getDefaultState() {
     totalFocusMs: 0,
     focusSessionStart: null,
     dailyStats: { date: null, started: 0, completed: 0 },
-    assetHolds: { phones: 59, laptops: 28 }
+    ticketStatus: defaultTicketStatus()
   }));
 }
 
@@ -129,7 +147,7 @@ function loadFromLocalStorage() {
       totalFocusMs: parsed.totalFocusMs || 0,
       focusSessionStart: null,
       dailyStats: parsed.dailyStats || { date: null, started: 0, completed: 0 },
-      assetHolds: Object.assign({ phones: 59, laptops: 28 }, parsed.assetHolds || {})
+      ticketStatus: Object.assign(defaultTicketStatus(), parsed.ticketStatus || {})
     });
     if (!state.tasks.queue) {
       state.tasks.queue = [];
@@ -231,7 +249,7 @@ function updateMetrics() {
   var scoreCompleted = document.getElementById('score-completed');
   var scoreWaiting = document.getElementById('score-waiting');
   var scoreFocusTime = document.getElementById('score-focus-time');
-  if (scoreCompleted) scoreCompleted.textContent = done;
+  if (scoreCompleted) scoreCompleted.textContent = state.dailyStats.completed;
   if (scoreWaiting) scoreWaiting.textContent = waiting;
   if (scoreFocusTime) scoreFocusTime.textContent = formatFocusTimeDisplay();
 
@@ -248,16 +266,10 @@ function updateMetrics() {
   var pct = started > 0
     ? Math.min(100, Math.round((completedToday / started) * 100))
     : 0;
-  var progressWrap = document.getElementById('daily-progress-wrap');
   var progressFill = document.getElementById('daily-progress-fill');
   var progressLabel = document.getElementById('daily-progress-label');
-  if (progressWrap) {
-    progressWrap.hidden = started === 0;
-    if (started > 0) {
-      if (progressFill) progressFill.style.width = pct + '%';
-      if (progressLabel) progressLabel.textContent = pct + '%';
-    }
-  }
+  if (progressFill) progressFill.style.width = pct + '%';
+  if (progressLabel) progressLabel.textContent = pct + '%';
 
   updateCurrentWorkCapacity();
 }
@@ -269,7 +281,7 @@ function updateCurrentWorkCapacity() {
   var warning = document.getElementById('capacity-warning');
   var lane = document.getElementById('lane-current-work');
 
-  indicator.textContent = count + ' Active • Limit ' + CURRENT_WORK_LIMIT;
+  indicator.textContent = count + ' / ' + CURRENT_WORK_LIMIT;
   indicator.classList.toggle('is-over', over);
   warning.hidden = !over;
   lane.classList.toggle('is-over-capacity', over);
@@ -313,6 +325,79 @@ function scrollToTask(taskId) {
   window.setTimeout(function () {
     taskEl.classList.remove('highlight');
   }, 1600);
+}
+
+function formatLogLine(taskName, message) {
+  var last = message.split(' → ').pop().trim();
+
+  if (last === 'Completed') {
+    return { icon: '✓', text: 'Finished ' + taskName };
+  }
+  if (last === 'Waiting') {
+    return { icon: '⏸', text: 'Waiting on ' + taskName };
+  }
+  if (last.indexOf('Started') === 0) {
+    return { icon: '▶', text: 'Started ' + taskName };
+  }
+  if (last.indexOf('Added to') === 0) {
+    return { icon: '+', text: taskName };
+  }
+  if (last.indexOf('Moved to') === 0) {
+    return { icon: '→', text: taskName + ' — ' + last.replace('Moved to ', 'moved to ') };
+  }
+  if (last === 'Removed') {
+    return { icon: '✕', text: 'Removed ' + taskName };
+  }
+  if (last === 'Focus set' || last === 'Focus') {
+    return { icon: '★', text: 'Focus on ' + taskName };
+  }
+
+  return { icon: logStepIcon(last), text: taskName + ' — ' + last };
+}
+
+function formatSnapshotDayLabel(dateKey) {
+  if (dateKey === todayKey()) return 'Today';
+  var yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (dateKey === yesterday.toISOString().slice(0, 10)) return 'Yesterday';
+
+  return new Date(dateKey + 'T12:00:00').toLocaleDateString([], {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric'
+  });
+}
+
+function buildSnapshotSummary(snap) {
+  var score = snap.executionScore || {};
+  var completed = score.completedToday != null ? score.completedToday : (snap.tasks.done ? snap.tasks.done.length : 0);
+  var carried = (snap.tasks.queue ? snap.tasks.queue.length : 0) + snap.tasks.waiting.length;
+  var focusArea = snap.mission || 'No mission recorded';
+  var blocker = 'None recorded';
+
+  if (snap.tasks.waiting && snap.tasks.waiting.length) {
+    var oldest = snap.tasks.waiting.slice().sort(function (a, b) {
+      return (a.waitingSince || 0) - (b.waitingSince || 0);
+    })[0];
+    blocker = oldest.context
+      ? oldest.text + ' — ' + oldest.context
+      : oldest.text;
+  } else if (snap.ticketStatus && snap.ticketStatus.pendingUser > 0) {
+    blocker = 'Pending User (' + snap.ticketStatus.pendingUser + ')';
+  } else if (snap.ticketStatus && snap.ticketStatus.onHold > 0) {
+    blocker = 'On Hold (' + snap.ticketStatus.onHold + ')';
+  }
+
+  if (snap.ticketStatus && snap.ticketStatus.mobilityRequests > 0) {
+    focusArea = 'Mobility Requests (' + snap.ticketStatus.mobilityRequests + ')';
+  }
+
+  return {
+    completed: completed,
+    carried: carried,
+    focusArea: focusArea,
+    blocker: blocker
+  };
 }
 
 function logStepIcon(step) {
@@ -378,12 +463,23 @@ function renderActivity() {
     var msg = document.createElement('span');
     msg.className = 'timeline-message';
     if (entry.taskName && entryType === 'work') {
-      var label = document.createElement('strong');
-      label.className = 'timeline-task';
-      label.textContent = entry.taskName;
-      msg.appendChild(label);
-      msg.appendChild(document.createTextNode(' — '));
-      appendLogSteps(msg, entry.message);
+      var line = formatLogLine(entry.taskName, entry.message);
+      var lineWrap = document.createElement('span');
+      lineWrap.className = 'timeline-log-line';
+
+      if (line.icon) {
+        var iconEl = document.createElement('span');
+        iconEl.className = 'timeline-log-icon';
+        iconEl.setAttribute('aria-hidden', 'true');
+        iconEl.textContent = line.icon;
+        lineWrap.appendChild(iconEl);
+      }
+
+      var textEl = document.createElement('span');
+      textEl.className = 'timeline-log-text';
+      textEl.textContent = line.text;
+      lineWrap.appendChild(textEl);
+      msg.appendChild(lineWrap);
     } else {
       msg.textContent = entry.message;
     }
@@ -625,54 +721,53 @@ function syncMissionFieldsFromDOM() {
   state.targets = items.join('\n');
 }
 
-function parseHoldValue(raw, fallback) {
+function parseMetricValue(raw, fallback) {
   var parsed = parseInt(String(raw).replace(/[^\d]/g, ''), 10);
   if (isNaN(parsed) || parsed < 0) return fallback;
   return parsed;
 }
 
-function formatAssetHoldsLine(holds) {
-  if (!holds) return '';
-  return holds.phones + ' Phones · ' + holds.laptops + ' Laptops';
+function formatTicketStatusLine(status) {
+  if (!status) return '';
+  return TICKET_STATUS_ROWS.map(function (row) {
+    return row.label + ' ' + (status[row.key] != null ? status[row.key] : 0);
+  }).join(' · ');
 }
 
-function syncAssetHoldsToDOM() {
-  if (!state.assetHolds) {
-    state.assetHolds = { phones: 59, laptops: 28 };
+function syncTicketStatusToDOM() {
+  if (!state.ticketStatus) {
+    state.ticketStatus = defaultTicketStatus();
   }
-  var phonesEl = document.getElementById('hold-phones');
-  var laptopsEl = document.getElementById('hold-laptops');
-  if (phonesEl) phonesEl.textContent = state.assetHolds.phones;
-  if (laptopsEl) laptopsEl.textContent = state.assetHolds.laptops;
+
+  TICKET_STATUS_ROWS.forEach(function (row) {
+    var el = document.querySelector('[data-metric="' + row.key + '"]');
+    if (el) {
+      el.textContent = state.ticketStatus[row.key];
+    }
+  });
 }
 
-function syncAssetHoldsFromDOM() {
-  if (!state.assetHolds) {
-    state.assetHolds = { phones: 59, laptops: 28 };
+function syncTicketStatusFromDOM() {
+  if (!state.ticketStatus) {
+    state.ticketStatus = defaultTicketStatus();
   }
 
-  var phonesEl = document.getElementById('hold-phones');
-  var laptopsEl = document.getElementById('hold-laptops');
-  var prevPhones = state.assetHolds.phones;
-  var prevLaptops = state.assetHolds.laptops;
+  var prev = JSON.stringify(state.ticketStatus);
 
-  state.assetHolds.phones = parseHoldValue(
-    phonesEl ? phonesEl.innerText : prevPhones,
-    prevPhones
-  );
-  state.assetHolds.laptops = parseHoldValue(
-    laptopsEl ? laptopsEl.innerText : prevLaptops,
-    prevLaptops
-  );
+  TICKET_STATUS_ROWS.forEach(function (row) {
+    var el = document.querySelector('[data-metric="' + row.key + '"]');
+    if (el) {
+      state.ticketStatus[row.key] = parseMetricValue(
+        el.innerText,
+        state.ticketStatus[row.key]
+      );
+    }
+  });
 
-  syncAssetHoldsToDOM();
+  syncTicketStatusToDOM();
 
-  if (state.assetHolds.phones !== prevPhones || state.assetHolds.laptops !== prevLaptops) {
-    logActivity(
-      'Legal holds updated — ' + formatAssetHoldsLine(state.assetHolds),
-      null,
-      'system'
-    );
+  if (JSON.stringify(state.ticketStatus) !== prev) {
+    logActivity('Ticket status updated — ' + formatTicketStatusLine(state.ticketStatus), null, 'system');
   }
 }
 
@@ -720,47 +815,35 @@ function renderSnapshotPreview() {
     var ph = document.createElement('span');
     ph.className = 'placeholder-text';
     ph.textContent = state.snapshots[todayKey()]
-      ? 'Click a day to load historical snapshot'
-      : 'No snapshots yet — Save Today to archive current execution state';
+      ? 'Select a day to view summary'
+      : 'Save Today to capture your first daily summary';
     box.appendChild(ph);
     return;
   }
 
   var snap = state.snapshots[state.selectedSnapshotDate];
-  var score = snap.executionScore;
+  var summary = buildSnapshotSummary(snap);
+  var wrap = document.createElement('div');
+  wrap.className = 'snapshot-summary';
 
-  if (score) {
-    var metrics = document.createElement('div');
-    metrics.className = 'snapshot-preview-metrics';
-    metrics.textContent = 'Execution Score: ' + formatExecutionScoreLine(score);
-    box.appendChild(metrics);
-  }
+  var title = document.createElement('div');
+  title.className = 'snapshot-summary-title';
+  title.textContent = formatSnapshotDayLabel(state.selectedSnapshotDate);
+  wrap.appendChild(title);
 
-  var lines = [
-    'Mission: ' + snap.mission,
-    'Queue: ' + (snap.tasks.queue ? snap.tasks.queue.length : 0) +
-      ' · Active: ' + snap.tasks.now.length +
-      ' · Waiting: ' + snap.tasks.waiting.length +
-      ' · Done: ' + snap.tasks.done.length
-  ];
-
-  if (snap.assetHolds) {
-    lines.push('Legal Holds: ' + formatAssetHoldsLine(snap.assetHolds));
-  }
-
-  if (snap.archivedDone && snap.archivedDone.length) {
-    var totalArchived = snap.archivedDone.reduce(function (sum, batch) {
-      return sum + (batch.count || (batch.tasks ? batch.tasks.length : 0));
-    }, 0);
-    lines.push('Archived completions: ' + totalArchived);
-  }
-
-  lines.forEach(function (line) {
-    var p = document.createElement('div');
-    p.className = 'snapshot-preview-line';
-    p.textContent = line;
-    box.appendChild(p);
+  [
+    '✓ ' + summary.completed + ' completed',
+    '✓ ' + summary.carried + ' carried over',
+    'Most time spent: ' + summary.focusArea,
+    'Biggest blocker: ' + summary.blocker
+  ].forEach(function (text, index) {
+    var line = document.createElement('div');
+    line.className = 'snapshot-summary-line' + (index >= 2 ? ' is-highlight' : '');
+    line.textContent = text;
+    wrap.appendChild(line);
   });
+
+  box.appendChild(wrap);
 }
 
 function saveSnapshot() {
@@ -770,7 +853,7 @@ function saveSnapshot() {
   state.snapshots[key] = {
     mission: state.mission,
     targets: state.targets,
-    assetHolds: JSON.parse(JSON.stringify(state.assetHolds)),
+    ticketStatus: JSON.parse(JSON.stringify(state.ticketStatus)),
     tasks: JSON.parse(JSON.stringify(state.tasks)),
     savedAt: new Date().toISOString(),
     archivedDone: existing && existing.archivedDone ? existing.archivedDone : [],
@@ -837,7 +920,7 @@ function startNewDay() {
     state.snapshots[key] = {
       mission: state.mission,
       targets: state.targets,
-      assetHolds: JSON.parse(JSON.stringify(state.assetHolds)),
+      ticketStatus: JSON.parse(JSON.stringify(state.ticketStatus)),
       tasks: JSON.parse(JSON.stringify(state.tasks)),
       savedAt: new Date().toISOString(),
       archivedDone: [archiveBatch],
@@ -849,7 +932,7 @@ function startNewDay() {
     }
     existing.archivedDone.push(archiveBatch);
     existing.tasks = JSON.parse(JSON.stringify(state.tasks));
-    existing.assetHolds = JSON.parse(JSON.stringify(state.assetHolds));
+    existing.ticketStatus = JSON.parse(JSON.stringify(state.ticketStatus));
     existing.savedAt = new Date().toISOString();
     existing.executionScore = executionScore;
   }
@@ -876,8 +959,8 @@ function loadSnapshot(dateKey) {
   var snap = state.snapshots[dateKey];
   state.mission = snap.mission;
   state.targets = snap.targets;
-  if (snap.assetHolds) {
-    state.assetHolds = JSON.parse(JSON.stringify(snap.assetHolds));
+  if (snap.ticketStatus) {
+    state.ticketStatus = JSON.parse(JSON.stringify(snap.ticketStatus));
   }
   state.tasks = JSON.parse(JSON.stringify(snap.tasks));
   if (!state.tasks.queue) {
@@ -887,7 +970,7 @@ function loadSnapshot(dateKey) {
   backfillWaitingSince();
 
   syncMissionFieldsToDOM();
-  syncAssetHoldsToDOM();
+  syncTicketStatusToDOM();
   logActivity('Loaded snapshot from ' + dateKey, null, 'system');
   renderBoard();
 }
@@ -1079,14 +1162,11 @@ function setupEventListeners() {
     saveToLocalStorage();
   });
 
-  document.getElementById('hold-phones').addEventListener('blur', function () {
-    syncAssetHoldsFromDOM();
-    saveToLocalStorage();
-  });
-
-  document.getElementById('hold-laptops').addEventListener('blur', function () {
-    syncAssetHoldsFromDOM();
-    saveToLocalStorage();
+  document.querySelectorAll('.queue-metric-value').forEach(function (el) {
+    el.addEventListener('blur', function () {
+      syncTicketStatusFromDOM();
+      saveToLocalStorage();
+    });
   });
 
   document.getElementById('snapshot-save-btn').addEventListener('click', saveSnapshot);
@@ -1151,7 +1231,7 @@ document.addEventListener('DOMContentLoaded', function () {
   loadFromLocalStorage();
   backfillWaitingSince();
   syncMissionFieldsToDOM();
-  syncAssetHoldsToDOM();
+  syncTicketStatusToDOM();
   setupEventListeners();
   setupKeyboardShortcuts();
   renderActivity();
