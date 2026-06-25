@@ -27,7 +27,7 @@
     <main class="board-container">
       <section class="widget-row" aria-label="Execution overview">
         <div class="card glass mission-card">
-          <div class="widget-header">Today's Mission</div>
+          <div class="widget-header mission-section-label">Today's Mission</div>
           <div
             class="editable-mission"
             contenteditable="true"
@@ -48,54 +48,56 @@
               <li>Update inventory</li>
             </ul>
           </div>
-          <div class="asset-holds" aria-label="Legal hold inventory">
-            <div class="target-title">Legal Holds</div>
-            <div class="asset-holds-row">
-              <span class="asset-hold-item">
-                <span class="asset-hold-value" contenteditable="true" id="hold-phones" role="textbox" aria-label="Legal hold phones">59</span>
-                <span class="asset-hold-label">Phones</span>
-              </span>
-              <span class="asset-hold-sep" aria-hidden="true">·</span>
-              <span class="asset-hold-item">
-                <span class="asset-hold-value" contenteditable="true" id="hold-laptops" role="textbox" aria-label="Legal hold laptops">28</span>
-                <span class="asset-hold-label">Laptops</span>
-              </span>
-            </div>
+          <div class="my-queue" aria-label="Live ticket queue metrics">
+            <div class="target-title">My Queue</div>
+            <ul class="queue-metrics" id="ticket-status-list">
+              <li class="queue-metric">
+                <span class="queue-metric-value" contenteditable="true" data-metric="active" role="textbox" aria-label="Active tickets">14</span>
+                <span class="queue-metric-label">Active</span>
+              </li>
+              <li class="queue-metric">
+                <span class="queue-metric-value" contenteditable="true" data-metric="mobilityRequests" role="textbox" aria-label="Mobility requests">6</span>
+                <span class="queue-metric-label">Mobility Requests</span>
+              </li>
+              <li class="queue-metric">
+                <span class="queue-metric-value" contenteditable="true" data-metric="pendingUser" role="textbox" aria-label="Tickets pending user">4</span>
+                <span class="queue-metric-label">Pending User</span>
+              </li>
+              <li class="queue-metric">
+                <span class="queue-metric-value" contenteditable="true" data-metric="pendingIT" role="textbox" aria-label="Tickets pending IT">3</span>
+                <span class="queue-metric-label">Pending IT</span>
+              </li>
+              <li class="queue-metric">
+                <span class="queue-metric-value" contenteditable="true" data-metric="onHold" role="textbox" aria-label="Tickets on hold">2</span>
+                <span class="queue-metric-label">On Hold</span>
+              </li>
+            </ul>
           </div>
           <hr class="mission-divider">
           <div class="mission-sub-counts" id="mission-sub-counts">0 Queue · 0 Active · 0 Waiting · 0 Done</div>
         </div>
 
-        <div class="card glass execution-card">
+        <div class="card glass execution-card execution-card--compact">
           <div class="widget-header-row">
             <div class="widget-header">Daily Progress</div>
             <button type="button" class="ghost-btn" id="new-day-btn" title="Archive Done tasks and reset today's counter">New Day</button>
           </div>
-          <div class="daily-progress-wrap" id="daily-progress-wrap" aria-label="Today's completion progress" hidden>
-            <div class="daily-progress-track">
-              <div class="daily-progress-fill" id="daily-progress-fill"></div>
+          <div class="progress-compact glass-promoted" aria-label="Today's progress">
+            <div class="progress-compact-bar">
+              <div class="daily-progress-track">
+                <div class="daily-progress-fill" id="daily-progress-fill"></div>
+              </div>
+              <span class="daily-progress-label" id="daily-progress-label">0%</span>
             </div>
-            <span class="daily-progress-label" id="daily-progress-label">0%</span>
-          </div>
-          <div class="today-score" aria-label="Today's score">
-            <div class="score-item">
-              <span class="score-value" id="score-completed">0</span>
-              <span class="score-label">Completed</span>
-            </div>
-            <span class="score-divider" aria-hidden="true">|</span>
-            <div class="score-item">
-              <span class="score-value" id="score-waiting">0</span>
-              <span class="score-label">Waiting</span>
-            </div>
-            <span class="score-divider" aria-hidden="true">|</span>
-            <div class="score-item">
-              <span class="score-value" id="score-focus-time">0m</span>
-              <span class="score-label">Focus Time</span>
+            <div class="progress-compact-stats">
+              <span class="compact-stat"><strong id="score-completed">0</strong> Completed</span>
+              <span class="compact-stat"><strong id="score-waiting">0</strong> Waiting</span>
+              <span class="compact-stat"><strong id="score-focus-time">0m</strong> Focus</span>
             </div>
           </div>
         </div>
 
-        <div class="card glass snapshot-card">
+        <div class="card glass snapshot-card snapshot-card--compact">
           <div class="widget-header-row">
             <div class="widget-header">Daily Snapshots</div>
             <button type="button" class="ghost-btn" id="snapshot-save-btn">Save Today</button>
@@ -121,11 +123,11 @@
           </div>
           <input
             type="text"
-            class="glass-input task-input-minimal"
+            class="glass-input task-input-minimal glass-promoted"
             id="input-queue"
-            placeholder="What's on your mind?"
+            placeholder="Capture task..."
             autocomplete="off"
-            aria-label="Add task to Queue"
+            aria-label="Capture task"
           >
           <div class="task-list" id="list-queue"></div>
         </div>
@@ -141,18 +143,18 @@
           <div class="lane-header">
             <div class="lane-header-left">
               <h2>Current Work</h2>
-              <span class="capacity-indicator" id="capacity-now" aria-live="polite">0 Active • Limit 5</span>
+              <span class="capacity-indicator" id="capacity-now" aria-live="polite">0 / 5</span>
             </div>
             <span class="lane-badge" id="badge-now">0</span>
           </div>
           <p class="capacity-warning" id="capacity-warning" hidden>Over capacity — pull from Queue or move items out</p>
           <input
             type="text"
-            class="glass-input task-input-minimal"
+            class="glass-input task-input-minimal glass-promoted"
             id="input-now"
-            placeholder="What are you working on?"
+            placeholder="Start working on..."
             autocomplete="off"
-            aria-label="What are you working on?"
+            aria-label="Start working on"
           >
           <div class="task-list" id="list-now"></div>
         </div>
@@ -170,11 +172,11 @@
           </div>
           <input
             type="text"
-            class="glass-input task-input-minimal"
+            class="glass-input task-input-minimal glass-promoted"
             id="input-waiting"
-            placeholder="Who are you waiting on?"
+            placeholder="Waiting for..."
             autocomplete="off"
-            aria-label="Who are you waiting on?"
+            aria-label="Waiting for"
           >
           <div class="task-list" id="list-waiting"></div>
         </div>
