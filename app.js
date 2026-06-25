@@ -38,7 +38,8 @@ var state = {
   selectedSnapshotDate: null,
   totalFocusMs: 0,
   focusSessionStart: null,
-  dailyStats: { date: null, started: 0, completed: 0 }
+  dailyStats: { date: null, started: 0, completed: 0 },
+  assetHolds: { phones: 59, laptops: 28 }
 };
 
 var draggedTaskId = null;
@@ -111,7 +112,8 @@ function getDefaultState() {
     selectedSnapshotDate: null,
     totalFocusMs: 0,
     focusSessionStart: null,
-    dailyStats: { date: null, started: 0, completed: 0 }
+    dailyStats: { date: null, started: 0, completed: 0 },
+    assetHolds: { phones: 59, laptops: 28 }
   }));
 }
 
@@ -126,7 +128,8 @@ function loadFromLocalStorage() {
       activity: parsed.activity || getDefaultState().activity,
       totalFocusMs: parsed.totalFocusMs || 0,
       focusSessionStart: null,
-      dailyStats: parsed.dailyStats || { date: null, started: 0, completed: 0 }
+      dailyStats: parsed.dailyStats || { date: null, started: 0, completed: 0 },
+      assetHolds: Object.assign({ phones: 59, laptops: 28 }, parsed.assetHolds || {})
     });
     if (!state.tasks.queue) {
       state.tasks.queue = [];
@@ -224,7 +227,6 @@ function updateMetrics() {
   var active = state.tasks.now.length;
   var waiting = state.tasks.waiting.length;
   var done = state.tasks.done.length;
-  var carried = getCarriedForwardCount();
 
   var scoreCompleted = document.getElementById('score-completed');
   var scoreWaiting = document.getElementById('score-waiting');
@@ -240,13 +242,6 @@ function updateMetrics() {
 
   document.getElementById('mission-sub-counts').textContent =
     queue + ' Queue · ' + active + ' Active · ' + waiting + ' Waiting · ' + done + ' Done';
-
-  var eodStarted = document.getElementById('eod-started');
-  var eodCompleted = document.getElementById('eod-completed');
-  var eodCarried = document.getElementById('eod-carried');
-  if (eodStarted) eodStarted.textContent = state.dailyStats.started;
-  if (eodCompleted) eodCompleted.textContent = state.dailyStats.completed;
-  if (eodCarried) eodCarried.textContent = carried;
 
   var started = state.dailyStats.started;
   var completedToday = state.dailyStats.completed;
@@ -274,7 +269,7 @@ function updateCurrentWorkCapacity() {
   var warning = document.getElementById('capacity-warning');
   var lane = document.getElementById('lane-current-work');
 
-  indicator.textContent = count + ' / ' + CURRENT_WORK_LIMIT;
+  indicator.textContent = count + ' Active • Limit ' + CURRENT_WORK_LIMIT;
   indicator.classList.toggle('is-over', over);
   warning.hidden = !over;
   lane.classList.toggle('is-over-capacity', over);
@@ -463,31 +458,36 @@ function buildTaskCard(task, laneKey) {
     main.appendChild(badge);
   }
 
-  var text = document.createElement('span');
-  text.className = 'task-text';
-  text.contentEditable = 'true';
-  text.spellcheck = true;
-  text.textContent = task.text;
-  text.addEventListener('focus', function () {
-    card.draggable = false;
-  });
-  text.addEventListener('blur', function () {
-    card.draggable = true;
-    updateTaskText(laneKey, task.id, text.innerText.trim());
-  });
-  text.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      text.blur();
-    }
-  });
-  main.appendChild(text);
-
-  card.appendChild(deleteBtn);
-  card.appendChild(main);
-
   if (laneKey === 'waiting') {
-    var ctx = document.createElement('div');
+    var line = document.createElement('div');
+    line.className = 'task-waiting-line';
+
+    var text = document.createElement('span');
+    text.className = 'task-text';
+    text.contentEditable = 'true';
+    text.spellcheck = true;
+    text.textContent = task.text;
+    text.addEventListener('focus', function () {
+      card.draggable = false;
+    });
+    text.addEventListener('blur', function () {
+      card.draggable = true;
+      updateTaskText(laneKey, task.id, text.innerText.trim());
+    });
+    text.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        text.blur();
+      }
+    });
+    line.appendChild(text);
+
+    var sep1 = document.createElement('span');
+    sep1.className = 'task-waiting-sep';
+    sep1.textContent = ' - ';
+    line.appendChild(sep1);
+
+    var ctx = document.createElement('span');
     ctx.className = 'task-context';
     ctx.contentEditable = 'true';
     ctx.spellcheck = true;
@@ -499,15 +499,43 @@ function buildTaskCard(task, laneKey) {
       card.draggable = true;
       updateTaskContext(laneKey, task.id, ctx.innerText.trim());
     });
-    card.appendChild(ctx);
+    line.appendChild(ctx);
 
-    if (task.waitingSince) {
-      var age = document.createElement('span');
-      age.className = 'task-age';
-      age.textContent = formatWaitingAge(task.waitingSince);
-      card.appendChild(age);
-    }
+    var sep2 = document.createElement('span');
+    sep2.className = 'task-waiting-sep';
+    sep2.textContent = ' - ';
+    line.appendChild(sep2);
+
+    var age = document.createElement('span');
+    age.className = 'task-age';
+    age.textContent = formatWaitingAge(task.waitingSince);
+    line.appendChild(age);
+
+    main.appendChild(line);
+  } else {
+    var text = document.createElement('span');
+    text.className = 'task-text';
+    text.contentEditable = 'true';
+    text.spellcheck = true;
+    text.textContent = task.text;
+    text.addEventListener('focus', function () {
+      card.draggable = false;
+    });
+    text.addEventListener('blur', function () {
+      card.draggable = true;
+      updateTaskText(laneKey, task.id, text.innerText.trim());
+    });
+    text.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        text.blur();
+      }
+    });
+    main.appendChild(text);
   }
+
+  card.appendChild(deleteBtn);
+  card.appendChild(main);
 
   if (laneKey === 'done') {
     if (task.elapsedMinutes != null) {
@@ -597,6 +625,57 @@ function syncMissionFieldsFromDOM() {
   state.targets = items.join('\n');
 }
 
+function parseHoldValue(raw, fallback) {
+  var parsed = parseInt(String(raw).replace(/[^\d]/g, ''), 10);
+  if (isNaN(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
+
+function formatAssetHoldsLine(holds) {
+  if (!holds) return '';
+  return holds.phones + ' Phones · ' + holds.laptops + ' Laptops';
+}
+
+function syncAssetHoldsToDOM() {
+  if (!state.assetHolds) {
+    state.assetHolds = { phones: 59, laptops: 28 };
+  }
+  var phonesEl = document.getElementById('hold-phones');
+  var laptopsEl = document.getElementById('hold-laptops');
+  if (phonesEl) phonesEl.textContent = state.assetHolds.phones;
+  if (laptopsEl) laptopsEl.textContent = state.assetHolds.laptops;
+}
+
+function syncAssetHoldsFromDOM() {
+  if (!state.assetHolds) {
+    state.assetHolds = { phones: 59, laptops: 28 };
+  }
+
+  var phonesEl = document.getElementById('hold-phones');
+  var laptopsEl = document.getElementById('hold-laptops');
+  var prevPhones = state.assetHolds.phones;
+  var prevLaptops = state.assetHolds.laptops;
+
+  state.assetHolds.phones = parseHoldValue(
+    phonesEl ? phonesEl.innerText : prevPhones,
+    prevPhones
+  );
+  state.assetHolds.laptops = parseHoldValue(
+    laptopsEl ? laptopsEl.innerText : prevLaptops,
+    prevLaptops
+  );
+
+  syncAssetHoldsToDOM();
+
+  if (state.assetHolds.phones !== prevPhones || state.assetHolds.laptops !== prevLaptops) {
+    logActivity(
+      'Legal holds updated — ' + formatAssetHoldsLine(state.assetHolds),
+      null,
+      'system'
+    );
+  }
+}
+
 function renderSnapshots() {
   var row = document.getElementById('snapshot-days');
   row.innerHTML = '';
@@ -655,11 +734,6 @@ function renderSnapshotPreview() {
     metrics.className = 'snapshot-preview-metrics';
     metrics.textContent = 'Execution Score: ' + formatExecutionScoreLine(score);
     box.appendChild(metrics);
-
-    var eodLine = document.createElement('div');
-    eodLine.className = 'snapshot-preview-metrics';
-    eodLine.textContent = 'EOD: ' + formatEodScoreLine(score);
-    box.appendChild(eodLine);
   }
 
   var lines = [
@@ -669,6 +743,10 @@ function renderSnapshotPreview() {
       ' · Waiting: ' + snap.tasks.waiting.length +
       ' · Done: ' + snap.tasks.done.length
   ];
+
+  if (snap.assetHolds) {
+    lines.push('Legal Holds: ' + formatAssetHoldsLine(snap.assetHolds));
+  }
 
   if (snap.archivedDone && snap.archivedDone.length) {
     var totalArchived = snap.archivedDone.reduce(function (sum, batch) {
@@ -692,6 +770,7 @@ function saveSnapshot() {
   state.snapshots[key] = {
     mission: state.mission,
     targets: state.targets,
+    assetHolds: JSON.parse(JSON.stringify(state.assetHolds)),
     tasks: JSON.parse(JSON.stringify(state.tasks)),
     savedAt: new Date().toISOString(),
     archivedDone: existing && existing.archivedDone ? existing.archivedDone : [],
@@ -758,6 +837,7 @@ function startNewDay() {
     state.snapshots[key] = {
       mission: state.mission,
       targets: state.targets,
+      assetHolds: JSON.parse(JSON.stringify(state.assetHolds)),
       tasks: JSON.parse(JSON.stringify(state.tasks)),
       savedAt: new Date().toISOString(),
       archivedDone: [archiveBatch],
@@ -769,6 +849,7 @@ function startNewDay() {
     }
     existing.archivedDone.push(archiveBatch);
     existing.tasks = JSON.parse(JSON.stringify(state.tasks));
+    existing.assetHolds = JSON.parse(JSON.stringify(state.assetHolds));
     existing.savedAt = new Date().toISOString();
     existing.executionScore = executionScore;
   }
@@ -795,6 +876,9 @@ function loadSnapshot(dateKey) {
   var snap = state.snapshots[dateKey];
   state.mission = snap.mission;
   state.targets = snap.targets;
+  if (snap.assetHolds) {
+    state.assetHolds = JSON.parse(JSON.stringify(snap.assetHolds));
+  }
   state.tasks = JSON.parse(JSON.stringify(snap.tasks));
   if (!state.tasks.queue) {
     state.tasks.queue = [];
@@ -803,6 +887,7 @@ function loadSnapshot(dateKey) {
   backfillWaitingSince();
 
   syncMissionFieldsToDOM();
+  syncAssetHoldsToDOM();
   logActivity('Loaded snapshot from ' + dateKey, null, 'system');
   renderBoard();
 }
@@ -819,7 +904,10 @@ function addTask(lane, text) {
 }
 
 function addWaitingTask(raw) {
-  var parts = raw.split('—');
+  var parts = raw.split(/\s*(?:—|–)\s*/);
+  if (parts.length === 1) {
+    parts = raw.split(/\s+-\s+/);
+  }
   var name = parts[0] ? parts[0].trim() : 'Context';
   var reason = parts[1] ? parts[1].trim() : 'Awaiting updates';
 
@@ -991,6 +1079,16 @@ function setupEventListeners() {
     saveToLocalStorage();
   });
 
+  document.getElementById('hold-phones').addEventListener('blur', function () {
+    syncAssetHoldsFromDOM();
+    saveToLocalStorage();
+  });
+
+  document.getElementById('hold-laptops').addEventListener('blur', function () {
+    syncAssetHoldsFromDOM();
+    saveToLocalStorage();
+  });
+
   document.getElementById('snapshot-save-btn').addEventListener('click', saveSnapshot);
   document.getElementById('new-day-btn').addEventListener('click', startNewDay);
   document.getElementById('clear-all-btn').addEventListener('click', clearAllBoard);
@@ -1053,6 +1151,7 @@ document.addEventListener('DOMContentLoaded', function () {
   loadFromLocalStorage();
   backfillWaitingSince();
   syncMissionFieldsToDOM();
+  syncAssetHoldsToDOM();
   setupEventListeners();
   setupKeyboardShortcuts();
   renderActivity();
