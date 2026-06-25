@@ -6,7 +6,7 @@
   <title>Execution OS — V2.1</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -47,6 +47,20 @@
               <li>Finish reconciliation</li>
               <li>Update inventory</li>
             </ul>
+          </div>
+          <div class="asset-holds" aria-label="Legal hold inventory">
+            <div class="target-title">Legal Holds</div>
+            <div class="asset-holds-row">
+              <span class="asset-hold-item">
+                <span class="asset-hold-value" contenteditable="true" id="hold-phones" role="textbox" aria-label="Legal hold phones">59</span>
+                <span class="asset-hold-label">Phones</span>
+              </span>
+              <span class="asset-hold-sep" aria-hidden="true">·</span>
+              <span class="asset-hold-item">
+                <span class="asset-hold-value" contenteditable="true" id="hold-laptops" role="textbox" aria-label="Legal hold laptops">28</span>
+                <span class="asset-hold-label">Laptops</span>
+              </span>
+            </div>
           </div>
           <hr class="mission-divider">
           <div class="mission-sub-counts" id="mission-sub-counts">0 Queue · 0 Active · 0 Waiting · 0 Done</div>
@@ -109,7 +123,7 @@
             type="text"
             class="glass-input task-input-minimal"
             id="input-queue"
-            placeholder="Capture for later..."
+            placeholder="What's on your mind?"
             autocomplete="off"
             aria-label="Add task to Queue"
           >
@@ -127,7 +141,7 @@
           <div class="lane-header">
             <div class="lane-header-left">
               <h2>Current Work</h2>
-              <span class="capacity-indicator" id="capacity-now" aria-live="polite">0 / 5</span>
+              <span class="capacity-indicator" id="capacity-now" aria-live="polite">0 Active • Limit 5</span>
             </div>
             <span class="lane-badge" id="badge-now">0</span>
           </div>
@@ -136,9 +150,9 @@
             type="text"
             class="glass-input task-input-minimal"
             id="input-now"
-            placeholder="[ + Type a task and press Enter... ]"
+            placeholder="What are you working on?"
             autocomplete="off"
-            aria-label="Add current work task"
+            aria-label="What are you working on?"
           >
           <div class="task-list" id="list-now"></div>
         </div>
@@ -158,9 +172,9 @@
             type="text"
             class="glass-input task-input-minimal"
             id="input-waiting"
-            placeholder="[ + Waiting on... (Name — Reason) ]"
+            placeholder="Who are you waiting on?"
             autocomplete="off"
-            aria-label="Add waiting task with context"
+            aria-label="Who are you waiting on?"
           >
           <div class="task-list" id="list-waiting"></div>
         </div>
@@ -179,23 +193,6 @@
           <div class="task-list" id="list-done"></div>
         </div>
       </section>
-
-      <footer class="eod-footer glass" id="eod-footer" aria-label="End of day summary">
-        <div class="eod-metric">
-          <span class="eod-value" id="eod-started">0</span>
-          <span class="eod-label">Started</span>
-        </div>
-        <span class="eod-divider" aria-hidden="true">|</span>
-        <div class="eod-metric">
-          <span class="eod-value" id="eod-completed">0</span>
-          <span class="eod-label">Completed</span>
-        </div>
-        <span class="eod-divider" aria-hidden="true">|</span>
-        <div class="eod-metric">
-          <span class="eod-value" id="eod-carried">0</span>
-          <span class="eod-label">Carried Forward</span>
-        </div>
-      </footer>
     </main>
 
     <aside class="activity-sidebar glass" id="sidebar" aria-label="Execution Log">
