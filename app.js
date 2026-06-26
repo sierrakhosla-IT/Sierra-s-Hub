@@ -194,14 +194,41 @@ function getCarriedForwardCount() {
 
 function buildExecutionScore() {
   ensureDailyStats();
+  var queue = state.tasks.queue.length;
+  var active = state.tasks.now.length;
+  var waiting = state.tasks.waiting.length;
+  var done = state.tasks.done.length;
+  var focusMinutes = getFocusTimeMinutes();
   return {
     completed: state.tasks.done.length,
-    waiting: state.tasks.waiting.length,
-    focusTimeMinutes: getFocusTimeMinutes(),
+    waiting: waiting,
+    focusTimeMinutes: focusMinutes,
+    focusTimeHours: focusMinutes >= 60 ? (focusMinutes / 60).toFixed(1) : null,
     started: state.dailyStats.started,
     completedToday: state.dailyStats.completed,
-    carriedForward: getCarriedForwardCount()
+    carriedForward: getCarriedForwardCount(),
+    planned: queue + active + waiting + done,
+    inProgress: active,
+    productivityScore: computeProductivityScore()
   };
+}
+
+function computeProductivityScore() {
+  ensureDailyStats();
+  var started = Math.max(state.dailyStats.started, 1);
+  var completedToday = state.dailyStats.completed;
+  var focusMinutes = getFocusTimeMinutes();
+  var completionRatio = Math.min(1, completedToday / started);
+  var focusRatio = Math.min(1, focusMinutes / 240);
+  return Math.round((completionRatio * 0.6 + focusRatio * 0.4) * 100);
+}
+
+function formatFocusTimeForMetric() {
+  var minutes = getFocusTimeMinutes();
+  if (minutes >= 60) {
+    return (minutes / 60).toFixed(1) + 'h';
+  }
+  return minutes + 'm';
 }
 
 function formatExecutionScoreLine(score) {
@@ -252,6 +279,25 @@ function updateMetrics() {
   if (scoreCompleted) scoreCompleted.textContent = state.dailyStats.completed;
   if (scoreWaiting) scoreWaiting.textContent = waiting;
   if (scoreFocusTime) scoreFocusTime.textContent = formatFocusTimeDisplay();
+
+  var metricPlanned = document.getElementById('metric-planned');
+  var metricCompleted = document.getElementById('metric-completed');
+  var metricInProgress = document.getElementById('metric-in-progress');
+  var metricWaiting = document.getElementById('metric-waiting');
+  var metricFocusTime = document.getElementById('metric-focus-time');
+  var plannedTotal = queue + active + waiting + done;
+  if (metricPlanned) metricPlanned.textContent = plannedTotal;
+  if (metricCompleted) metricCompleted.textContent = state.dailyStats.completed;
+  if (metricInProgress) metricInProgress.textContent = active;
+  if (metricWaiting) metricWaiting.textContent = waiting;
+  if (metricFocusTime) metricFocusTime.textContent = formatFocusTimeForMetric();
+
+  var productivityEl = document.getElementById('productivity-score');
+  if (productivityEl) {
+    var score = computeProductivityScore();
+    productivityEl.textContent = 'Score ' + score;
+    productivityEl.hidden = plannedTotal === 0 && state.dailyStats.completed === 0 && getFocusTimeMinutes() === 0;
+  }
 
   document.getElementById('badge-queue').textContent = queue;
   document.getElementById('badge-now').textContent = active;
@@ -392,11 +438,22 @@ function buildSnapshotSummary(snap) {
     focusArea = 'Mobility Requests (' + snap.ticketStatus.mobilityRequests + ')';
   }
 
+  var metricsSummary = '';
+  if (score.planned != null) {
+    var focusLabel = score.focusTimeHours
+      ? score.focusTimeHours + 'h focus'
+      : (score.focusTimeMinutes || 0) + 'm focus';
+    metricsSummary = score.planned + ' planned · ' +
+      (score.completedToday != null ? score.completedToday : completed) + ' completed · ' +
+      focusLabel;
+  }
+
   return {
     completed: completed,
     carried: carried,
     focusArea: focusArea,
-    blocker: blocker
+    blocker: blocker,
+    metricsSummary: metricsSummary
   };
 }
 
@@ -555,59 +612,87 @@ function buildTaskCard(task, laneKey) {
   }
 
   if (laneKey === 'waiting') {
-    var line = document.createElement('div');
-    line.className = 'task-waiting-line';
+    card.classList.add('waiting-task-card');
 
-    var text = document.createElement('span');
-    text.className = 'task-text';
-    text.contentEditable = 'true';
-    text.spellcheck = true;
-    text.textContent = task.text;
-    text.addEventListener('focus', function () {
+    var title = document.createElement('div');
+    title.className = 'waiting-task-title task-text';
+    title.contentEditable = 'true';
+    title.spellcheck = true;
+    title.textContent = task.text;
+    title.addEventListener('focus', function () {
       card.draggable = false;
     });
-    text.addEventListener('blur', function () {
+    title.addEventListener('blur', function () {
       card.draggable = true;
-      updateTaskText(laneKey, task.id, text.innerText.trim());
+      updateTaskText(laneKey, task.id, title.innerText.trim());
     });
-    text.addEventListener('keydown', function (e) {
+    title.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        text.blur();
+        title.blur();
       }
     });
-    line.appendChild(text);
+    main.appendChild(title);
 
-    var sep1 = document.createElement('span');
-    sep1.className = 'task-waiting-sep';
-    sep1.textContent = ' - ';
-    line.appendChild(sep1);
+    var parsed = parseWaitingContext(task.context || '');
+    var meta = document.createElement('div');
+    meta.className = 'waiting-task-meta';
 
-    var ctx = document.createElement('span');
-    ctx.className = 'task-context';
-    ctx.contentEditable = 'true';
-    ctx.spellcheck = true;
-    ctx.textContent = task.context || '';
-    ctx.addEventListener('focus', function () {
-      card.draggable = false;
+    var partyRow = document.createElement('div');
+    partyRow.className = 'waiting-task-row';
+    var partyLabel = document.createElement('span');
+    partyLabel.className = 'waiting-meta-label';
+    partyLabel.textContent = 'Waiting on';
+    var party = document.createElement('span');
+    party.className = 'waiting-task-party task-context';
+    party.contentEditable = 'true';
+    party.spellcheck = true;
+    party.textContent = parsed.party;
+    partyRow.appendChild(partyLabel);
+    partyRow.appendChild(party);
+    meta.appendChild(partyRow);
+
+    var noteRow = document.createElement('div');
+    noteRow.className = 'waiting-task-row waiting-task-row--note';
+    if (!parsed.note) noteRow.hidden = true;
+    var noteLabel = document.createElement('span');
+    noteLabel.className = 'waiting-meta-label';
+    noteLabel.textContent = 'Note';
+    var note = document.createElement('span');
+    note.className = 'waiting-task-note task-context';
+    note.contentEditable = 'true';
+    note.spellcheck = true;
+    note.textContent = parsed.note;
+    noteRow.appendChild(noteLabel);
+    noteRow.appendChild(note);
+    meta.appendChild(noteRow);
+
+    bindWaitingContextEditors(card, laneKey, task, party, note);
+    party.addEventListener('blur', function () {
+      noteRow.hidden = !note.textContent.trim();
     });
-    ctx.addEventListener('blur', function () {
-      card.draggable = true;
-      updateTaskContext(laneKey, task.id, ctx.innerText.trim());
+    note.addEventListener('input', function () {
+      noteRow.hidden = false;
     });
-    line.appendChild(ctx);
 
-    var sep2 = document.createElement('span');
-    sep2.className = 'task-waiting-sep';
-    sep2.textContent = ' - ';
-    line.appendChild(sep2);
+    main.appendChild(meta);
+
+    var footer = document.createElement('div');
+    footer.className = 'waiting-task-footer';
 
     var age = document.createElement('span');
     age.className = 'task-age';
     age.textContent = formatWaitingAge(task.waitingSince);
-    line.appendChild(age);
+    footer.appendChild(age);
 
-    main.appendChild(line);
+    if (task.expectedBy) {
+      var expected = document.createElement('span');
+      expected.className = 'task-expected-by';
+      expected.textContent = 'Due ' + formatExpectedBy(task.expectedBy);
+      footer.appendChild(expected);
+    }
+
+    main.appendChild(footer);
   } else {
     var text = document.createElement('span');
     text.className = 'task-text';
@@ -831,14 +916,20 @@ function renderSnapshotPreview() {
   title.textContent = formatSnapshotDayLabel(state.selectedSnapshotDate);
   wrap.appendChild(title);
 
-  [
+  var lines = [];
+  if (summary.metricsSummary) {
+    lines.push(summary.metricsSummary);
+  }
+  lines.push(
     '✓ ' + summary.completed + ' completed',
     '✓ ' + summary.carried + ' carried over',
     'Most time spent: ' + summary.focusArea,
     'Biggest blocker: ' + summary.blocker
-  ].forEach(function (text, index) {
+  );
+
+  lines.forEach(function (text, index) {
     var line = document.createElement('div');
-    line.className = 'snapshot-summary-line' + (index >= 2 ? ' is-highlight' : '');
+    line.className = 'snapshot-summary-line' + (index >= (summary.metricsSummary ? 3 : 2) ? ' is-highlight' : '');
     line.textContent = text;
     wrap.appendChild(line);
   });
@@ -986,6 +1077,45 @@ function addTask(lane, text) {
   renderBoard();
 }
 
+function formatExpectedBy(dateStr) {
+  if (!dateStr) return '';
+  var parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  var date = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function parseWaitingContext(context) {
+  if (!context) return { party: '', note: '' };
+  var match = context.match(/^([\s\S]*?)\s*(?:—|–)\s*([\s\S]+)$/);
+  if (!match) return { party: context.trim(), note: '' };
+  return { party: match[1].trim(), note: match[2].trim() };
+}
+
+function composeWaitingContext(party, note) {
+  var p = (party || '').trim();
+  var n = (note || '').trim();
+  if (!p) return n || 'Awaiting updates';
+  if (!n) return p;
+  return p + ' — ' + n;
+}
+
+function bindWaitingContextEditors(card, laneKey, task, partyEl, noteEl) {
+  function syncContext() {
+    updateTaskContext(laneKey, task.id, composeWaitingContext(partyEl.innerText, noteEl.innerText));
+  }
+
+  [partyEl, noteEl].forEach(function (el) {
+    el.addEventListener('focus', function () {
+      card.draggable = false;
+    });
+    el.addEventListener('blur', function () {
+      card.draggable = true;
+      syncContext();
+    });
+  });
+}
+
 function addWaitingTask(raw) {
   var parts = raw.split(/\s*(?:—|–)\s*/);
   if (parts.length === 1) {
@@ -1003,6 +1133,44 @@ function addWaitingTask(raw) {
   state.tasks.waiting.push(task);
 
   logActivity('Added to Waiting', name, 'work', task.id);
+  renderBoard();
+}
+
+function addWaitingTaskFromForm() {
+  var taskField = document.getElementById('input-waiting-task');
+  var waitingOnField = document.getElementById('input-waiting-on');
+  var contextField = document.getElementById('input-waiting-context');
+  var expectedField = document.getElementById('input-waiting-expected');
+
+  var taskText = taskField && taskField.value.trim();
+  var waitingOn = waitingOnField && waitingOnField.value.trim();
+  var contextExtra = contextField && contextField.value.trim();
+  var expectedBy = expectedField && expectedField.value;
+
+  if (!taskText && !waitingOn) return;
+
+  var name = taskText || 'Untitled';
+  var context = waitingOn || 'Awaiting updates';
+  if (contextExtra) {
+    context = context + ' — ' + contextExtra;
+  }
+
+  var task = {
+    id: uid(),
+    text: name,
+    context: context,
+    waitingSince: Date.now()
+  };
+  if (expectedBy) {
+    task.expectedBy = expectedBy;
+  }
+  state.tasks.waiting.push(task);
+
+  logActivity('Added to Waiting — ' + name, null, 'work', task.id);
+  if (taskField) taskField.value = '';
+  if (waitingOnField) waitingOnField.value = '';
+  if (contextField) contextField.value = '';
+  if (expectedField) expectedField.value = '';
   renderBoard();
 }
 
@@ -1143,13 +1311,9 @@ function setupEventListeners() {
     e.target.value = '';
   });
 
-  document.getElementById('input-waiting').addEventListener('keydown', function (e) {
-    if (e.key !== 'Enter') return;
-    var value = e.target.value.trim();
-    if (!value) return;
+  document.getElementById('waiting-form').addEventListener('submit', function (e) {
     e.preventDefault();
-    addWaitingTask(value);
-    e.target.value = '';
+    addWaitingTaskFromForm();
   });
 
   document.getElementById('mission-text').addEventListener('blur', function () {
@@ -1243,9 +1407,12 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   window.setInterval(function () {
-    var scoreFocusTime = document.getElementById('score-focus-time');
-    if (scoreFocusTime && state.focusSessionStart) {
-      scoreFocusTime.textContent = formatFocusTimeDisplay();
+    if (state.focusSessionStart) {
+      var scoreFocusTime = document.getElementById('score-focus-time');
+      var metricFocusTime = document.getElementById('metric-focus-time');
+      var display = formatFocusTimeDisplay();
+      if (scoreFocusTime) scoreFocusTime.textContent = display;
+      if (metricFocusTime) metricFocusTime.textContent = formatFocusTimeForMetric();
     }
   }, 30000);
 });
