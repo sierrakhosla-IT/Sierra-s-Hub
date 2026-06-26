@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Execution OS — V2.1</title>
+  <title>Execution OS — V2.4</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -16,7 +16,7 @@
     <header class="top-nav glass">
       <div class="nav-brand">
         <span class="brand-name">Execution OS</span>
-        <span class="brand-version">V2.1</span>
+        <span class="brand-version">V2.4</span>
       </div>
       <div class="nav-actions">
         <button type="button" class="utility-btn" id="clear-all-btn">Clear All</button>
@@ -48,31 +48,58 @@
               <li>Update inventory</li>
             </ul>
           </div>
-          <div class="my-queue" aria-label="Live ticket queue metrics">
-            <div class="target-title">My Queue</div>
-            <ul class="queue-metrics" id="ticket-status-list">
-              <li class="queue-metric">
-                <span class="queue-metric-value" contenteditable="true" data-metric="active" role="textbox" aria-label="Active tickets">14</span>
-                <span class="queue-metric-label">Active</span>
+          <div class="mission-metrics" aria-label="How is today going?">
+            <div class="target-title">Mission Metrics</div>
+            <ul class="mission-metrics-grid">
+              <li class="mission-metric">
+                <span class="mission-metric-value" id="metric-planned">0</span>
+                <span class="mission-metric-label">Planned</span>
               </li>
-              <li class="queue-metric">
-                <span class="queue-metric-value" contenteditable="true" data-metric="mobilityRequests" role="textbox" aria-label="Mobility requests">6</span>
-                <span class="queue-metric-label">Mobility Requests</span>
+              <li class="mission-metric">
+                <span class="mission-metric-value" id="metric-completed">0</span>
+                <span class="mission-metric-label">Completed</span>
               </li>
-              <li class="queue-metric">
-                <span class="queue-metric-value" contenteditable="true" data-metric="pendingUser" role="textbox" aria-label="Tickets pending user">4</span>
-                <span class="queue-metric-label">Pending User</span>
+              <li class="mission-metric">
+                <span class="mission-metric-value" id="metric-in-progress">0</span>
+                <span class="mission-metric-label">In Progress</span>
               </li>
-              <li class="queue-metric">
-                <span class="queue-metric-value" contenteditable="true" data-metric="pendingIT" role="textbox" aria-label="Tickets pending IT">3</span>
-                <span class="queue-metric-label">Pending IT</span>
+              <li class="mission-metric">
+                <span class="mission-metric-value" id="metric-waiting">0</span>
+                <span class="mission-metric-label">Waiting</span>
               </li>
-              <li class="queue-metric">
-                <span class="queue-metric-value" contenteditable="true" data-metric="onHold" role="textbox" aria-label="Tickets on hold">2</span>
-                <span class="queue-metric-label">On Hold</span>
+              <li class="mission-metric">
+                <span class="mission-metric-value" id="metric-focus-time">0m</span>
+                <span class="mission-metric-label">Focus Time</span>
               </li>
             </ul>
           </div>
+          <details class="mobility-overview">
+            <summary>Operations Overview</summary>
+            <div class="my-queue" aria-label="Live ticket queue metrics">
+              <ul class="queue-metrics" id="ticket-status-list">
+                <li class="queue-metric">
+                  <span class="queue-metric-value" contenteditable="true" data-metric="active" role="textbox" aria-label="Active tickets">14</span>
+                  <span class="queue-metric-label">Active</span>
+                </li>
+                <li class="queue-metric">
+                  <span class="queue-metric-value" contenteditable="true" data-metric="mobilityRequests" role="textbox" aria-label="Mobility requests">6</span>
+                  <span class="queue-metric-label">Mobility Requests</span>
+                </li>
+                <li class="queue-metric">
+                  <span class="queue-metric-value" contenteditable="true" data-metric="pendingUser" role="textbox" aria-label="Tickets pending user">4</span>
+                  <span class="queue-metric-label">Pending User</span>
+                </li>
+                <li class="queue-metric">
+                  <span class="queue-metric-value" contenteditable="true" data-metric="pendingIT" role="textbox" aria-label="Tickets pending IT">3</span>
+                  <span class="queue-metric-label">Pending IT</span>
+                </li>
+                <li class="queue-metric">
+                  <span class="queue-metric-value" contenteditable="true" data-metric="onHold" role="textbox" aria-label="Tickets on hold">2</span>
+                  <span class="queue-metric-label">On Hold</span>
+                </li>
+              </ul>
+            </div>
+          </details>
           <hr class="mission-divider">
           <div class="mission-sub-counts" id="mission-sub-counts">0 Queue · 0 Active · 0 Waiting · 0 Done</div>
         </div>
@@ -83,6 +110,7 @@
             <button type="button" class="ghost-btn" id="new-day-btn" title="Archive Done tasks and reset today's counter">New Day</button>
           </div>
           <div class="progress-compact glass-promoted" aria-label="Today's progress">
+            <span class="productivity-badge" id="productivity-score" hidden>Score —</span>
             <div class="progress-compact-bar">
               <div class="daily-progress-track">
                 <div class="daily-progress-fill" id="daily-progress-fill"></div>
@@ -170,14 +198,25 @@
             <h2>Waiting</h2>
             <span class="lane-badge" id="badge-waiting">0</span>
           </div>
-          <input
-            type="text"
-            class="glass-input task-input-minimal glass-promoted"
-            id="input-waiting"
-            placeholder="Waiting for..."
-            autocomplete="off"
-            aria-label="Waiting for"
-          >
+          <form class="waiting-form glass-promoted" id="waiting-form">
+            <div class="waiting-form-field">
+              <label class="waiting-form-label" for="input-waiting-task">Task / Deliverable</label>
+              <input type="text" id="input-waiting-task" placeholder="What are you waiting on?" autocomplete="off" aria-label="Task or deliverable">
+            </div>
+            <div class="waiting-form-field">
+              <label class="waiting-form-label" for="input-waiting-on">Waiting On</label>
+              <input type="text" id="input-waiting-on" placeholder="Person or team" autocomplete="off" aria-label="Waiting on">
+            </div>
+            <div class="waiting-form-field">
+              <label class="waiting-form-label" for="input-waiting-context">Context (optional)</label>
+              <input type="text" id="input-waiting-context" placeholder="Additional context" autocomplete="off" aria-label="Context">
+            </div>
+            <div class="waiting-form-field">
+              <label class="waiting-form-label" for="input-waiting-expected">Expected By</label>
+              <input type="date" id="input-waiting-expected" aria-label="Expected by date">
+            </div>
+            <button type="submit" class="waiting-form-submit">Add to Waiting List</button>
+          </form>
           <div class="task-list" id="list-waiting"></div>
         </div>
 
