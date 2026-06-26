@@ -13,7 +13,7 @@
   <div class="ambient-bg-canvas" aria-hidden="true"></div>
 
   <div class="app-shell">
-    <header class="top-nav glass">
+    <header class="top-nav glass-panel">
       <div class="nav-brand">
         <span class="brand-name">Execution OS</span>
         <span class="brand-version">V2.4</span>
@@ -26,7 +26,7 @@
 
     <main class="board-container">
       <section class="widget-row" aria-label="Execution overview">
-        <div class="card glass mission-card">
+        <div class="glass-panel mission-card">
           <div class="widget-header mission-section-label">Today's Mission</div>
           <div
             class="editable-mission"
@@ -104,7 +104,7 @@
           <div class="mission-sub-counts" id="mission-sub-counts">0 Queue · 0 Active · 0 Waiting · 0 Done</div>
         </div>
 
-        <div class="card glass execution-card execution-card--compact">
+        <div class="glass-panel execution-card execution-card--compact">
           <div class="widget-header-row">
             <div class="widget-header">Daily Progress</div>
             <button type="button" class="ghost-btn" id="new-day-btn" title="Archive Done tasks and reset today's counter">New Day</button>
@@ -125,7 +125,7 @@
           </div>
         </div>
 
-        <div class="card glass snapshot-card snapshot-card--compact">
+        <div class="glass-panel snapshot-card snapshot-card--compact">
           <div class="widget-header-row">
             <div class="widget-header">Daily Snapshots</div>
             <button type="button" class="ghost-btn" id="snapshot-save-btn">Save Today</button>
@@ -139,7 +139,7 @@
 
       <section class="lanes-grid" aria-label="Execution lanes">
         <div
-          class="lane-column queue-column glass"
+          class="lane-column queue-column glass-panel"
           data-lane="queue"
           ondragover="allowDrop(event)"
           ondragleave="dragLeave(event)"
@@ -161,7 +161,7 @@
         </div>
 
         <div
-          class="lane-column current-work-column glass"
+          class="lane-column current-work-column glass-panel"
           id="lane-current-work"
           data-lane="now"
           ondragover="allowDrop(event)"
@@ -188,7 +188,7 @@
         </div>
 
         <div
-          class="lane-column waiting-column glass"
+          class="lane-column waiting-column glass-panel"
           data-lane="waiting"
           ondragover="allowDrop(event)"
           ondragleave="dragLeave(event)"
@@ -221,7 +221,7 @@
         </div>
 
         <div
-          class="lane-column done-column glass"
+          class="lane-column done-column glass-panel"
           data-lane="done"
           ondragover="allowDrop(event)"
           ondragleave="dragLeave(event)"
@@ -236,7 +236,7 @@
       </section>
     </main>
 
-    <aside class="activity-sidebar glass" id="sidebar" aria-label="Execution Log">
+    <aside class="activity-sidebar glass-panel" id="sidebar" aria-label="Execution Log">
       <div class="sidebar-header">
         <span class="title">Execution Log</span>
         <button type="button" id="toggle-sidebar" class="ghost-btn" aria-label="Toggle execution log">↔</button>
@@ -247,7 +247,7 @@
 
   <div class="shortcuts-modal" id="shortcuts-modal" hidden>
     <div class="shortcuts-modal-backdrop" id="shortcuts-backdrop"></div>
-    <div class="shortcuts-modal-panel glass" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+    <div class="shortcuts-modal-panel glass-panel" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
       <h2 class="shortcuts-title" id="shortcuts-title">Keyboard Shortcuts</h2>
       <ul class="shortcuts-list">
         <li><kbd>N</kbd> Focus Queue input</li>
