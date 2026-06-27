@@ -10,28 +10,31 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="ambient-bg-canvas" aria-hidden="true"></div>
-
-  <div class="app-shell">
+  <div class="app-shell sidebar-collapsed">
     <header class="top-nav glass-panel">
       <div class="nav-brand">
         <span class="brand-name">Execution OS</span>
         <span class="brand-version">V2.4</span>
+        <span class="save-status" id="save-status" aria-live="polite" title="Changes saved">
+          <span class="save-status-dot"></span>
+        </span>
       </div>
       <div class="nav-actions">
+        <button type="button" class="utility-btn" id="reset-day-btn" title="Return Current Work to Queue and clear Done">Reset Day</button>
         <button type="button" class="utility-btn" id="clear-all-btn">Clear All</button>
+        <button type="button" class="ghost-btn settings-trigger" id="settings-btn" aria-label="Settings and backup" title="Settings (Ctrl+,)">⚙</button>
         <button type="button" class="ghost-btn shortcuts-trigger" id="shortcuts-btn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts">?</button>
       </div>
     </header>
 
-    <main class="board-container">
+    <main class="board-container app-glass-canvas">
       <section class="widget-row" aria-label="Execution overview">
         <div class="glass-panel mission-card">
           <div class="widget-header mission-section-label">Today's Mission</div>
           <div
             class="editable-mission"
             contenteditable="true"
-            id="mission-text"
+            id="directive-display"
             spellcheck="true"
             role="textbox"
             aria-label="Core objective"
@@ -153,7 +156,7 @@
             type="text"
             class="glass-input task-input-minimal glass-promoted"
             id="input-queue"
-            placeholder="Capture task..."
+            placeholder="Capture task… !high @work"
             autocomplete="off"
             aria-label="Capture task"
           >
@@ -236,7 +239,7 @@
       </section>
     </main>
 
-    <aside class="activity-sidebar glass-panel" id="sidebar" aria-label="Execution Log">
+    <aside class="activity-sidebar glass-panel collapsed" id="sidebar" aria-label="Execution Log">
       <div class="sidebar-header">
         <span class="title">Execution Log</span>
         <button type="button" id="toggle-sidebar" class="ghost-btn" aria-label="Toggle execution log">↔</button>
@@ -252,12 +255,57 @@
       <ul class="shortcuts-list">
         <li><kbd>N</kbd> Focus Queue input</li>
         <li><kbd>W</kbd> Focus Current Work input</li>
+        <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd> Quick capture</li>
         <li><kbd>F</kbd> Cycle focus task</li>
         <li><kbd>/</kbd> Edit mission</li>
         <li><kbd>D</kbd> Scroll to Done lane</li>
+        <li><kbd>Ctrl</kbd>+<kbd>,</kbd> Settings &amp; backup</li>
         <li><kbd>?</kbd> Show this help</li>
       </ul>
       <button type="button" class="ghost-btn" id="shortcuts-close">Close</button>
+    </div>
+  </div>
+
+  <div class="quick-capture-modal" id="quick-capture-modal" hidden>
+    <div class="quick-capture-backdrop" id="quick-capture-backdrop"></div>
+    <div class="quick-capture-panel glass-panel" role="dialog" aria-modal="true" aria-labelledby="quick-capture-title">
+      <h2 class="quick-capture-title" id="quick-capture-title">Quick Capture</h2>
+      <input
+        type="text"
+        class="glass-input quick-capture-input"
+        id="quick-capture-input"
+        placeholder="Dump a thought… !high @work"
+        autocomplete="off"
+        aria-label="Quick capture task"
+      >
+      <p class="quick-capture-hint">Enter saves to Queue · Esc closes · Use <kbd>!high</kbd> and <kbd>@tag</kbd></p>
+    </div>
+  </div>
+
+  <div class="settings-modal" id="settings-modal" hidden>
+    <div class="settings-modal-backdrop" id="settings-backdrop"></div>
+    <div class="settings-modal-panel glass-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <h2 class="settings-title" id="settings-title">Settings</h2>
+      <section class="settings-section">
+        <h3 class="settings-section-title">Backup</h3>
+        <p class="settings-desc">Download your full board state as JSON, or restore from a previous export.</p>
+        <div class="settings-actions">
+          <button type="button" class="utility-btn" id="export-json-btn">Export JSON</button>
+          <label class="utility-btn settings-import-label">
+            Import JSON
+            <input type="file" id="import-json-input" accept="application/json,.json" hidden>
+          </label>
+        </div>
+      </section>
+      <section class="settings-section">
+        <h3 class="settings-section-title">Maintenance</h3>
+        <label class="settings-toggle">
+          <input type="checkbox" id="auto-archive-toggle" checked>
+          <span>Auto-archive Done tasks older than 7 days</span>
+        </label>
+        <p class="settings-meta" id="history-meta">History: 0 archived tasks</p>
+      </section>
+      <button type="button" class="ghost-btn" id="settings-close">Close</button>
     </div>
   </div>
 
