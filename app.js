@@ -2,6 +2,7 @@
 
 var STORAGE_KEY = 'exec_os_v2_data';
 var CURRENT_WORK_LIMIT = 5;
+var SAVE_INDICATOR_MS = 2200;
 
 var LANE_LABELS = {
   queue: 'Queue',
@@ -57,11 +58,17 @@ var state = {
   totalFocusMs: 0,
   focusSessionStart: null,
   dailyStats: { date: null, started: 0, completed: 0 },
-  ticketStatus: defaultTicketStatus()
+  ticketStatus: defaultTicketStatus(),
+  settings: {
+    autoArchiveDone: true,
+    archiveAfterDays: 7
+  },
+  history: []
 };
 
 var draggedTaskId = null;
 var draggedSourceLane = null;
+var saveIndicatorTimer = null;
 
 function formatTimestamp(date) {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -93,6 +100,127 @@ function todayKey() {
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function parseTaskInput(raw) {
+  var text = (raw || '').trim();
+  var priority = null;
+  var tags = [];
+  var priorityMatch = text.match(/!(high|medium|low|urgent)\b/i);
+
+  if (priorityMatch) {
+    priority = priorityMatch[1].toLowerCase();
+    text = text.replace(/!(high|medium|low|urgent)\b/i, '').trim();
+  }
+
+  var tagRegex = /@([\w-]+)/g;
+  var tagMatch;
+  while ((tagMatch = tagRegex.exec(text)) !== null) {
+    tags.push(tagMatch[1].toLowerCase());
+  }
+  text = text.replace(/@[\w-]+/g, '').replace(/\s{2,}/g, ' ').trim();
+
+  return { text: text, priority: priority, tags: tags };
+}
+
+function applyParsedTaskFields(task, parsed) {
+  if (parsed.priority) {
+    task.priority = parsed.priority;
+  }
+  if (parsed.tags.length) {
+    task.tags = parsed.tags.slice();
+  }
+}
+
+function showSaveIndicator() {
+  var el = document.getElementById('save-status');
+  if (!el) return;
+  el.classList.add('is-saved');
+  clearTimeout(saveIndicatorTimer);
+  saveIndicatorTimer = setTimeout(function () {
+    el.classList.remove('is-saved');
+  }, SAVE_INDICATOR_MS);
+}
+
+function ensureSettings() {
+  if (!state.settings) {
+    state.settings = { autoArchiveDone: true, archiveAfterDays: 7 };
+  }
+  if (state.settings.autoArchiveDone == null) {
+    state.settings.autoArchiveDone = true;
+  }
+  if (!state.settings.archiveAfterDays) {
+    state.settings.archiveAfterDays = 7;
+  }
+  if (!Array.isArray(state.history)) {
+    state.history = [];
+  }
+}
+
+function backfillCompletedAt() {
+  state.tasks.done.forEach(function (task) {
+    if (!task.completedAt) {
+      task.completedAt = Date.now();
+    }
+  });
+}
+
+function archiveDoneTasks(tasks, reason) {
+  if (!tasks.length) return;
+  ensureSettings();
+  state.history.push({
+    archivedAt: new Date().toISOString(),
+    reason: reason || 'manual',
+    tasks: JSON.parse(JSON.stringify(tasks))
+  });
+}
+
+function purgeStaleDoneTasks() {
+  ensureSettings();
+  if (state.settings.autoArchiveDone === false) return 0;
+
+  var days = state.settings.archiveAfterDays || 7;
+  var cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  var toArchive = [];
+  var keep = [];
+
+  state.tasks.done.forEach(function (task) {
+    var completedAt = task.completedAt || Date.now();
+    if (completedAt < cutoff) {
+      toArchive.push(task);
+    } else {
+      keep.push(task);
+    }
+  });
+
+  if (!toArchive.length) return 0;
+
+  archiveDoneTasks(toArchive, 'auto-archive');
+  state.tasks.done = keep;
+  logActivity('Auto-archived ' + toArchive.length + ' completed task(s)', null, 'system');
+  return toArchive.length;
+}
+
+function getHistoryTaskCount() {
+  ensureSettings();
+  return state.history.reduce(function (sum, batch) {
+    return sum + (batch.tasks ? batch.tasks.length : 0);
+  }, 0);
+}
+
+function updateHistoryMeta() {
+  var meta = document.getElementById('history-meta');
+  if (!meta) return;
+  meta.textContent = 'History: ' + getHistoryTaskCount() + ' archived task(s)';
+}
+
+function syncSettingsToDOM() {
+  ensureSettings();
+  var toggle = document.getElementById('auto-archive-toggle');
+  if (toggle) {
+    toggle.checked = state.settings.autoArchiveDone !== false;
+  }
+  updateHistoryMeta();
 }
 
 function isTypingTarget(el) {
@@ -131,7 +259,12 @@ function getDefaultState() {
     totalFocusMs: 0,
     focusSessionStart: null,
     dailyStats: { date: null, started: 0, completed: 0 },
-    ticketStatus: defaultTicketStatus()
+    ticketStatus: defaultTicketStatus(),
+    settings: {
+      autoArchiveDone: true,
+      archiveAfterDays: 7
+    },
+    history: []
   }));
 }
 
@@ -147,7 +280,12 @@ function loadFromLocalStorage() {
       totalFocusMs: parsed.totalFocusMs || 0,
       focusSessionStart: null,
       dailyStats: parsed.dailyStats || { date: null, started: 0, completed: 0 },
-      ticketStatus: Object.assign(defaultTicketStatus(), parsed.ticketStatus || {})
+      ticketStatus: Object.assign(defaultTicketStatus(), parsed.ticketStatus || {}),
+      settings: Object.assign(
+        { autoArchiveDone: true, archiveAfterDays: 7 },
+        parsed.settings || {}
+      ),
+      history: Array.isArray(parsed.history) ? parsed.history : []
     });
     if (!state.tasks.queue) {
       state.tasks.queue = [];
@@ -157,7 +295,9 @@ function loadFromLocalStorage() {
         state.tasks[lane] = [];
       }
     });
+    ensureSettings();
     backfillWaitingSince();
+    backfillCompletedAt();
   } catch (err) {
     console.warn('Execution OS: could not load saved state', err);
   }
@@ -166,6 +306,7 @@ function loadFromLocalStorage() {
 function saveToLocalStorage() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    showSaveIndicator();
   } catch (err) {
     console.warn('Execution OS: could not save state', err);
   }
@@ -562,6 +703,31 @@ function renderActivity() {
   });
 }
 
+function appendTaskMetaBadges(card, task) {
+  if (!task.priority && (!task.tags || !task.tags.length)) return;
+
+  var wrap = document.createElement('div');
+  wrap.className = 'task-meta-badges';
+
+  if (task.priority) {
+    var priority = document.createElement('span');
+    priority.className = 'task-priority-badge priority-' + task.priority;
+    priority.textContent = task.priority;
+    wrap.appendChild(priority);
+  }
+
+  if (task.tags && task.tags.length) {
+    task.tags.forEach(function (tag) {
+      var badge = document.createElement('span');
+      badge.className = 'task-tag-badge';
+      badge.textContent = '@' + tag;
+      wrap.appendChild(badge);
+    });
+  }
+
+  card.appendChild(wrap);
+}
+
 function buildTaskCard(task, laneKey) {
   var card = document.createElement('div');
   card.className = 'task-card glass' + (task.focused ? ' is-focused' : '');
@@ -717,6 +883,7 @@ function buildTaskCard(task, laneKey) {
 
   card.appendChild(deleteBtn);
   card.appendChild(main);
+  appendTaskMetaBadges(card, task);
 
   if (laneKey === 'done') {
     if (task.elapsedMinutes != null) {
@@ -782,11 +949,12 @@ function renderBoard() {
   renderLane('done', 'list-done');
   updateMetrics();
   renderSnapshots();
+  updateHistoryMeta();
   saveToLocalStorage();
 }
 
 function syncMissionFieldsToDOM() {
-  document.getElementById('mission-text').textContent = state.mission;
+  document.getElementById('directive-display').textContent = state.mission;
 
   var list = document.getElementById('mission-targets-list');
   list.innerHTML = '';
@@ -798,7 +966,7 @@ function syncMissionFieldsToDOM() {
 }
 
 function syncMissionFieldsFromDOM() {
-  state.mission = document.getElementById('mission-text').innerText.trim();
+  state.mission = document.getElementById('directive-display').innerText.trim();
   var items = Array.prototype.map.call(
     document.querySelectorAll('#mission-targets-list li'),
     function (li) { return li.innerText.trim(); }
@@ -1034,6 +1202,148 @@ function startNewDay() {
   renderBoard();
 }
 
+function resetDay() {
+  var nowTasks = state.tasks.now.slice();
+  var doneTasks = state.tasks.done.slice();
+
+  if (nowTasks.length === 0 && doneTasks.length === 0) {
+    logActivity('Reset Day — nothing to reset', null, 'system');
+    return;
+  }
+
+  if (!confirm(
+    'Reset today? ' + nowTasks.length + ' Current Work task(s) return to Queue and ' +
+    doneTasks.length + ' Done task(s) will be archived to History.'
+  )) {
+    return;
+  }
+
+  endFocusSession();
+
+  if (doneTasks.length) {
+    archiveDoneTasks(doneTasks, 'reset-day');
+  }
+
+  nowTasks.forEach(function (task) {
+    task.focused = false;
+    delete task.startTime;
+    state.tasks.queue.push(task);
+  });
+
+  state.tasks.now = [];
+  state.tasks.done = [];
+  state.totalFocusMs = 0;
+  state.dailyStats = { date: todayKey(), started: 0, completed: 0 };
+
+  logActivity(
+    'Reset Day — ' + nowTasks.length + ' returned to Queue, ' + doneTasks.length + ' archived',
+    null,
+    'system'
+  );
+  renderBoard();
+}
+
+function exportStateToJson() {
+  var payload = JSON.stringify(state, null, 2);
+  var blob = new Blob([payload], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var link = document.createElement('a');
+  link.href = url;
+  link.download = 'execution-os-backup-' + todayKey() + '.json';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  logActivity('Exported JSON backup', null, 'system');
+  renderActivity();
+  saveToLocalStorage();
+}
+
+function importStateFromFile(file) {
+  if (!file) return;
+
+  var reader = new FileReader();
+  reader.onload = function (event) {
+    try {
+      var parsed = JSON.parse(event.target.result);
+      if (!parsed || typeof parsed !== 'object' || !parsed.tasks) {
+        alert('Invalid backup file — expected Execution OS JSON export.');
+        return;
+      }
+
+      if (!confirm('Replace all current board data with this backup? This cannot be undone.')) {
+        return;
+      }
+
+      endFocusSession();
+      state = Object.assign(getDefaultState(), parsed, {
+        tasks: Object.assign(getDefaultState().tasks, parsed.tasks || {}),
+        snapshots: parsed.snapshots || {},
+        activity: parsed.activity || getDefaultState().activity,
+        totalFocusMs: parsed.totalFocusMs || 0,
+        focusSessionStart: null,
+        dailyStats: parsed.dailyStats || { date: null, started: 0, completed: 0 },
+        ticketStatus: Object.assign(defaultTicketStatus(), parsed.ticketStatus || {}),
+        settings: Object.assign(
+          { autoArchiveDone: true, archiveAfterDays: 7 },
+          parsed.settings || {}
+        ),
+        history: Array.isArray(parsed.history) ? parsed.history : []
+      });
+
+      ['queue', 'now', 'waiting', 'done'].forEach(function (lane) {
+        if (!Array.isArray(state.tasks[lane])) {
+          state.tasks[lane] = [];
+        }
+      });
+
+      ensureSettings();
+      backfillWaitingSince();
+      backfillCompletedAt();
+      syncMissionFieldsToDOM();
+      syncTicketStatusToDOM();
+      syncSettingsToDOM();
+      logActivity('Imported JSON backup', null, 'system');
+      renderBoard();
+    } catch (err) {
+      alert('Could not import backup: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function openQuickCaptureModal() {
+  var modal = document.getElementById('quick-capture-modal');
+  var input = document.getElementById('quick-capture-input');
+  modal.hidden = false;
+  input.value = '';
+  input.focus();
+}
+
+function closeQuickCaptureModal() {
+  var modal = document.getElementById('quick-capture-modal');
+  modal.hidden = true;
+}
+
+function submitQuickCapture() {
+  var input = document.getElementById('quick-capture-input');
+  var value = input.value.trim();
+  if (!value) return;
+  addTask('queue', value);
+  input.value = '';
+  closeQuickCaptureModal();
+}
+
+function openSettingsModal() {
+  syncSettingsToDOM();
+  document.getElementById('settings-modal').hidden = false;
+  document.getElementById('settings-close').focus();
+}
+
+function closeSettingsModal() {
+  document.getElementById('settings-modal').hidden = true;
+}
+
 function loadSnapshot(dateKey) {
   if (!state.snapshots[dateKey]) {
     state.selectedSnapshotDate = dateKey;
@@ -1066,15 +1376,21 @@ function loadSnapshot(dateKey) {
   renderBoard();
 }
 
-function addTask(lane, text) {
-  var task = { id: uid(), text: text, focused: false };
+function addTask(lane, rawInput) {
+  var parsed = parseTaskInput(rawInput);
+  if (!parsed.text) return null;
+
+  var task = { id: uid(), text: parsed.text, focused: false };
+  applyParsedTaskFields(task, parsed);
+
   if (lane === 'now') {
     task.startTime = Date.now();
     incrementDailyStarted();
   }
   state.tasks[lane].push(task);
-  logActivity('Added to ' + LANE_LABELS[lane], text, 'work', task.id);
+  logActivity('Added to ' + LANE_LABELS[lane], parsed.text, 'work', task.id);
   renderBoard();
+  return task;
 }
 
 function formatExpectedBy(dateStr) {
@@ -1231,6 +1547,7 @@ function moveTask(sourceLane, targetLane, taskId) {
 
   if (targetLane === 'done') {
     task.timestamp = formatTimestamp(new Date());
+    task.completedAt = Date.now();
     if (task.startTime) {
       task.elapsedMinutes = Math.floor((Date.now() - task.startTime) / 60000);
     }
@@ -1311,12 +1628,50 @@ function setupEventListeners() {
     e.target.value = '';
   });
 
+  document.getElementById('quick-capture-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeQuickCaptureModal();
+      return;
+    }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    submitQuickCapture();
+  });
+
+  document.getElementById('quick-capture-backdrop').addEventListener('click', closeQuickCaptureModal);
+
+  document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
+  document.getElementById('settings-close').addEventListener('click', closeSettingsModal);
+  document.getElementById('settings-backdrop').addEventListener('click', closeSettingsModal);
+  document.getElementById('export-json-btn').addEventListener('click', exportStateToJson);
+  document.getElementById('import-json-input').addEventListener('change', function (e) {
+    var file = e.target.files && e.target.files[0];
+    if (file) {
+      importStateFromFile(file);
+    }
+    e.target.value = '';
+  });
+  document.getElementById('auto-archive-toggle').addEventListener('change', function (e) {
+    ensureSettings();
+    state.settings.autoArchiveDone = e.target.checked;
+    saveToLocalStorage();
+    if (e.target.checked) {
+      purgeStaleDoneTasks();
+      renderBoard();
+      renderActivity();
+    }
+    updateHistoryMeta();
+  });
+
+  document.getElementById('reset-day-btn').addEventListener('click', resetDay);
+
   document.getElementById('waiting-form').addEventListener('submit', function (e) {
     e.preventDefault();
     addWaitingTaskFromForm();
   });
 
-  document.getElementById('mission-text').addEventListener('blur', function () {
+  document.getElementById('directive-display').addEventListener('blur', function () {
     syncMissionFieldsFromDOM();
     saveToLocalStorage();
   });
@@ -1351,10 +1706,39 @@ function setupEventListeners() {
 
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', function (e) {
-    var modal = document.getElementById('shortcuts-modal');
-    if (!modal.hidden && e.key === 'Escape') {
+    var shortcutsModal = document.getElementById('shortcuts-modal');
+    var quickCaptureModal = document.getElementById('quick-capture-modal');
+    var settingsModal = document.getElementById('settings-modal');
+
+    if (!shortcutsModal.hidden && e.key === 'Escape') {
       e.preventDefault();
       closeShortcutsModal();
+      return;
+    }
+
+    if (!quickCaptureModal.hidden) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeQuickCaptureModal();
+      }
+      return;
+    }
+
+    if (!settingsModal.hidden && e.key === 'Escape') {
+      e.preventDefault();
+      closeSettingsModal();
+      return;
+    }
+
+    if (e.code === 'Space' && e.shiftKey && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      openQuickCaptureModal();
+      return;
+    }
+
+    if (e.key === ',' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      openSettingsModal();
       return;
     }
 
@@ -1379,7 +1763,7 @@ function setupKeyboardShortcuts() {
         break;
       case '/':
         e.preventDefault();
-        document.getElementById('mission-text').focus();
+        document.getElementById('directive-display').focus();
         break;
       case 'd':
         e.preventDefault();
@@ -1394,8 +1778,11 @@ function setupKeyboardShortcuts() {
 document.addEventListener('DOMContentLoaded', function () {
   loadFromLocalStorage();
   backfillWaitingSince();
+  backfillCompletedAt();
+  purgeStaleDoneTasks();
   syncMissionFieldsToDOM();
   syncTicketStatusToDOM();
+  syncSettingsToDOM();
   setupEventListeners();
   setupKeyboardShortcuts();
   renderActivity();
